@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Squid Log Viewer</title>
+<meta http-equiv="Cache-Control" content="no-cache"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
+<style>
+  iframe.top 	  { width: 99%; height: 60px; }
+  iframe.middle { width: 99%; height: 1024px; }
+  iframe.bottom { width: 99%; height: 200px; }
+</style>
+</head>
+<body>
+<iframe name='top_iframe' id='top_iframe' class="top"></iframe>
+<iframe name='middle_iframe' id='middle_iframe' class="middle" allowfullscreen></iframe>
+<iframe name='middle_iframe' id='bottom_iframe' class='bottom'></iframe>
+<script>
+
+function MakeiFrame(id, url) {
+  let iframe = document.getElementById(id);
+  iframe.src = url + "?" + location.search.substr(1);
+}
+
+MakeiFrame('top_iframe', 'top.html');
+MakeiFrame('middle_iframe', 'middle.html');
+MakeiFrame('bottom_iframe', 'bottom.html');
+
+</script>
+    
+</body>
+</html> 
