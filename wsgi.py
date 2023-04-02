@@ -23,6 +23,7 @@ def _top():
         if location:
             servers = get_servers().get(location, [])
             client_ips = get_client_ips().get(location, [])
+            status_codes = get_status_codes()
             #return servers
         else:
             servers = []

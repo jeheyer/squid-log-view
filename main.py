@@ -8,11 +8,12 @@ from cloud_storage import *
 
 LOG_FIELD_NAMES: tuple = ('timestamp', 'elapsed', 'client_ip', 'code', 'bytes', 'method', 'url', 'rfc931', 'peer_status', 'type')
 FILTER_FIELD_NAMES: tuple = ('client_ip', 'code', 'url')
-DEFAULT_INTERVAL: int = 1800
+DEFAULT_INTERVAL: int = 600
 DEFAULT_FILTER: dict = {}
 LOCATIONS_FILE = 'locations.toml'
 SERVERS_FILE = 'servers.toml'
 CLIENT_IPS_FILE = 'client_ips.toml'
+STATUS_CODES_FILE = 'status_codes.toml'
 
 
 def read_toml(file_name: str) -> dict:
@@ -62,6 +63,12 @@ def get_client_ips() -> dict:
         raise e
 
     return {}
+
+
+def get_status_codes() -> list:
+
+    return read_toml(STATUS_CODES_FILE).keys()
+
 
 def process_log(blob, time_range: tuple, filter: dict = {}) -> list:
 
@@ -228,6 +235,8 @@ def get_data(env_vars: dict = {}) -> dict:
         peer_status = _[8].split("/")[0]
         peer_status_counts[peer_status] = peer_status_counts[peer_status]+1 if peer_status in peer_status_counts else 1
         entries.append(dict(zip(LOG_FIELD_NAMES, _)))
+
+    save_toml(STATUS_CODES_FILE, status_code_counts)
 
     client_ips = read_toml(CLIENT_IPS_FILE)
     requests_by = {
