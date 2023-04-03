@@ -6,14 +6,21 @@ app = Flask(__name__, static_url_path='/static')
 app.config['JSON_SORT_KEYS'] = False
 
 INTERVALS = {
-    '120': "Last 2 Mintues",
-    '300': "Last 5 Mintues",
-    '600': "Last 10 Mintues",
-    '1800': "Last 30 Mintues",
+    '120': "Last 2 Minutes",
+    '300': "Last 5 Minutes",
+    '600': "Last 10 Minutes",
+    '1800': "Last 30 Minutes",
     '3600': "Last 1 Hour",
     '1440': "Last 4 Hours",
     '86400': "Last 1 Day",
 }
+
+RESPONSE_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-cache, no-store',
+    'Pragma': 'no-cache'
+}
+
 
 @app.route("/")
 @app.route("/index.html")
@@ -45,7 +52,8 @@ def _top():
 @app.route("/middle.html")
 def _middle():
     try:
-        return render_template('middle.html', locations=get_locations().keys())
+        data = get_data(request.args)
+        return render_template('middle.html', data=data)
     except:
         return Response(format_exc(), 500, content_type="text/plain")
 
@@ -62,15 +70,9 @@ def _bottom():
 def _get_data():
 
     try:
-        data = get_data(request.args)
 
-        # Don't let the browser cache response
-        response_headers = {
-           'Access-Control-Allow-Origin': '*',
-           'Cache-Control': 'no-cache, no-store',
-           'Pragma': 'no-cache'
-        }
-        return jsonify(data), response_headers
+        data = get_data(request.args)
+        return jsonify(data), RESPONSE_HEADERS
     except:
         return Response(format_exc(), 500, content_type="text/plain")
 

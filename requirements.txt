@@ -1,7 +1,7 @@
-flask==2.2.2
-gunicorn==20.1.0
-quart==0.18.3
-hypercorn==0.14.3
+flask==2.2.3
+gunicorn
+quart
+hypercorn
 gcloud-aio-storage
 tomli
 tomli_w

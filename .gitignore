@@ -5,6 +5,7 @@ __pycache__/
 MANIFEST
 .python-version
 __pypackages__/
+.idea/
 .env
 .venv
 *.toml
