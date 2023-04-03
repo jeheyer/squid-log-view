@@ -41,8 +41,8 @@ fieldset input{
     <legend>Location:</legend>
     <select name="location" id="location_list" size=1>
       <option value="" selected>All Locations</option>
-      {% for location in locations %}
-        <option value="{{location}}"{% if location == "OTL" %} selected{% endif %}>{{location}}</option>
+      {% for _ in locations %}
+        <option value="{{_}}"{% if _ == location %} selected{% endif %}>{{_}}</option>
       {% endfor %}
     </select>
   </fieldset>
@@ -50,8 +50,8 @@ fieldset input{
     <legend>Server:</legend>
     <select name="server" id="server_list" size=1>
       <option value="" selected>All Servers</option>
-      {% for server in servers %}
-        <option value="{{server}}"}>{{server}}</option>
+      {% for _ in servers %}
+        <option value="{{_}}"}>{{_}}</option>
       {% endfor %}
     </select>
   </fieldset>
@@ -59,8 +59,8 @@ fieldset input{
     <legend>Client IP Address:</legend>
     <select name="client_ip" id="client_ip_list" size=1>
       <option value="" selected>All Clients</option>
-      {% for client_ip in client_ips %}
-        <option value="{{client_ip}}"}>{{client_ip}}</option>
+      {% for _ in client_ips %}
+        <option value="{{_}}"}>{{_}}</option>
       {% endfor %}
     </select>
   </fieldset>
@@ -68,30 +68,22 @@ fieldset input{
     <legend>Response Code:</legend>
     <select name="status_code" id="status_code_list" size=1>
       <option value="" selected>All Status Codes</option>
-      {% for status_code in status_codes %}
-        <option value="{{status_code}}"}>{{status_code}}</option>
+      {% for _ in status_codes %}
+        <option value="{{_}}">{{_}}</option>
       {% endfor %}
     </select>
   </fieldset>
   <fieldset>
     <legend>Interval:</legend>
     <select name="interval" id="interval_list" size=1>
-      <option value="120">Last 2 Minutes</option>
-      <option value="300 selected">Last 5 Minutes</option>
-      <option value="900">Last 15 Minutes</option>
-      <option value="1800">Last 30 Minutes</option>
-      <option value="3600">Last 1 Hour</option>
-      <option value="7200">Last 2 Hours</option>
-      <option value="14400">Last 4 Hours</option>
-      <option value="28800">Last 8 Hours</option>
-      <option value="86400">Last 24 Hours</option>
-      <option value="172800">Last 48 Hours</option>
-      <option value="259200">Last 72 Hours</option>
+      {% for k, v in intervals.items() %}
+        <option value="{{k}}"{% if interval == k %} selected{% endif %}>{{v}}</option>
+      {% endfor %}
     </select>
   </fieldset>
   <input type='hidden' name="end_time" id="end_time"></select>
-  <input type="submit" value="Show Rest  Data">
-  <input type="reset" value="Clear form">
+  <input type="submit" value="Show Data">
+  <input type="reset" value="Reset Options">
   </form>
   <!-- End Form -->
 <script src="static/ajax-functions.js"></script>

@@ -2,72 +2,13 @@ from asyncio import run
 from collections import deque, Counter
 from time import time
 from math import floor
-from tomli import load
-from tomli_w import dump
 from cloud_storage import *
+from local_storage import *
 
-LOG_FIELD_NAMES: tuple = ('timestamp', 'elapsed', 'client_ip', 'code', 'bytes', 'method', 'url', 'rfc931', 'peer_status', 'type')
+LOG_FIELDS: tuple = ('timestamp', 'elapsed', 'client_ip', 'code', 'bytes', 'method', 'url', 'rfc931', 'how', 'type')
 FILTER_FIELD_NAMES: tuple = ('client_ip', 'code', 'url')
-DEFAULT_INTERVAL: int = 600
+DEFAULT_INTERVAL: int = 1800
 DEFAULT_FILTER: dict = {}
-LOCATIONS_FILE = 'locations.toml'
-SERVERS_FILE = 'servers.toml'
-CLIENT_IPS_FILE = 'client_ips.toml'
-STATUS_CODES_FILE = 'status_codes.toml'
-
-
-def read_toml(file_name: str) -> dict:
-
-    try:
-        pwd = path.realpath(path.dirname(__file__))
-        if path.isfile(locations_file := path.join(pwd, file_name)):
-            fp = open(locations_file, mode="rb")
-            return load(fp)
-        else:
-            return {}
-    except Exception as e:
-        raise e
-
-
-def save_toml(file_name: str, data : dict):
-
-    try:
-        with open(file_name, mode="wb") as fp:
-            dump(data, fp)
-    except Exception as e:
-        raise e
-
-
-def get_locations() -> dict:
-
-    return read_toml(LOCATIONS_FILE)
-
-
-def get_servers() -> dict:
-
-    return read_toml(SERVERS_FILE)
-
-
-def get_locations_list() -> list:
-
-    return list(get_locations().keys())
-
-
-def get_client_ips() -> dict:
-
-    try:        
-        _ = read_toml(CLIENT_IPS_FILE)
-        if _:
-           return _ 
-    except Exception as e:
-        raise e
-
-    return {}
-
-
-def get_status_codes() -> list:
-
-    return read_toml(STATUS_CODES_FILE).keys()
 
 
 def process_log(blob, time_range: tuple, filter: dict = {}) -> list:
@@ -78,7 +19,7 @@ def process_log(blob, time_range: tuple, filter: dict = {}) -> list:
 
         if filter:
             filter_indexes: dict = {}
-            for i, field_name in enumerate(LOG_FIELD_NAMES):
+            for i, field_name in enumerate(LOG_FIELDS):
                 if field_name in filter:
                     filter_indexes[i] = field_name
 
@@ -120,10 +61,15 @@ def process_log(blob, time_range: tuple, filter: dict = {}) -> list:
 
 def get_data(env_vars: dict = {}) -> dict:
 
+    splits = {'start': time()}
+
     try:
         locations = get_locations()
     except Exception as e:
         raise e
+    assert locations, "Could not load locations.  Does {} exist?".format(LOCATIONS_FILE)
+
+    splits['get_locations'] = time()
 
     # Process parameters
     if 'action' in env_vars:
@@ -147,45 +93,28 @@ def get_data(env_vars: dict = {}) -> dict:
             filter[f] = env_vars[f]
 
     # Populate hosts
-    hosts: dict = {}
-    if 'location' in env_vars:
-        location = env_vars.get('location')
-        hosts[location] = {}
+    if location := env_vars.get('location'):
         bucket_name = locations[location]['bucket_name']
         bucket_type = locations[location]['bucket_type']
         file_path = locations[location]['file_path']
         auth_file = locations[location]['auth_file']
-        #if 'server' in env_vars:
         server = env_vars.get('server')
-        #    hosts[location][server] = locations[location][server]
-        #else:
-        #    for server in locations[location]['servers']:
-        #        servers[location][server] = locations[location]['clusters'][cluster]
 
-    """
-    hits_by_host: dict = {}
-    hits_by_cluster: dict = {}
-    file_names = {}
-    for location in hosts.keys():
-        for cluster in hosts[location].keys():
-            cluster_id = location + ":" + cluster
-            hits_by_cluster[cluster_id] = 0
-            for host in hosts[location][cluster]:
-                hits_by_host[host] = 0
-                file_names[host] = file_path + host + ".log"
-
-    file_names.clear()
-    """
     # Get servers for each location
     servers = read_toml(SERVERS_FILE)
+
+    splits['get_servers'] = time()
 
     # Get a list of all files in the bucket
     objects = run(get_objects_list(bucket_name, prefix=file_path, bucket_type=bucket_type, auth_file=auth_file))
 
+    splits['list_objects'] = time()
+
+    requests = {'server': {}, 'client_ip': {}, 'method': {}, 'status_code': {}, 'domain': {}}
+    bytes = {'server': {}, 'client_ip': {}, 'domain': {}}
+
     # Populate list of files to read from bucket
     file_names: dict = {}
-    hits_by_server: dict = {}
-    #servers = {}
     if location:
         servers[location] = []
     for o in objects:
@@ -193,70 +122,77 @@ def get_data(env_vars: dict = {}) -> dict:
             continue
         server = o['name'].split('/')[-1].replace('.log', '')
         servers[location].append(server)
-        #if 'us-east4' in host:
         file_names[server] = o['name']
-        hits_by_server[server] = 0
+        requests['server'][server] = 0
 
     save_toml(SERVERS_FILE, servers)
-    #file_names.clear()
-    #file_names[host] = o['name']
-    #return file_names
 
+    splits['save_servers'] = time()
 
     # Read the log files from the bucket
     entries: deque = deque()
     blobs = run(read_files_from_bucket(bucket_name, file_names.values(), bucket_type=bucket_type, auth_file=auth_file))
+
+    splits['read_objects'] = time()
+
     for i, server in enumerate(file_names.keys()):
         matches = list(process_log(blobs[i], time_range, filter))
         if len(matches) > 0:
             entries.extend(matches)
-            hits_by_server[server] = len(matches)
-            #hits_by_cluster[cluster_id] += hits_by_host[host]
+            requests['server'][server] = len(matches)
     del blobs
 
-    # Sort by timestamp reversed, so that newest entries are first
+    splits['process_objects'] = time()
+
+    # Sort by timestamp reversed, so that latest entries are first in the list
     newest_first: list = sorted(entries, key=lambda x: x[0][:10], reverse=True)
     entries.clear()
+    entries = [dict(zip(LOG_FIELDS, _)) for _ in newest_first]
 
-    # Convert to list of dictionaries
-    requests_by_client = {}; status_code_counts = {}; bytes_by_client_ip = {}; requests_by_method = {}; requests_by_domain = {}; peer_status_counts = {}
+    splits['sort_entries'] = time()
+
+    # Perform Total Counts
+    requests['client_ip'] = Counter([_[2] for _ in newest_first])
+    requests['status_code'] = Counter([_[3] for _ in newest_first])
+    requests['method'] = Counter([_[5] for _ in newest_first])
+    requests['domain'] = Counter([_[6][7:].split("/")[0] if _[6].startswith("http:") else _[6] for _ in newest_first])
+    requests['how'] = Counter([_[8].split("/")[0] for _ in newest_first])
+
+
+    #bytes['client_ip'] = Counter([_[2] if _[6].startswith("http:") else _[4] for _ in newest_first]),
+
+    splits['do_counts'] = time()
+
     for _ in newest_first:
-        requests_by_client[_[2]] = requests_by_client[_[2]]+1 if _[2] in requests_by_client else 1
-        bytes_by_client_ip[_[2]] = bytes_by_client_ip[_[2]] + int(_[4]) if _[2] in bytes_by_client_ip else int(_[4])
-        status_code_counts[_[3]] = status_code_counts[_[3]]+1 if _[3] in status_code_counts else 1
-        requests_by_method[_[5]] = requests_by_method[_[5]]+1 if _[5] in requests_by_method else 1
-        if _[6].startswith("http:"):
-            domain: str = _[6][7:].split("/")[0]
-            if not ":" in domain:
-                domain = domain + ":80"
-        else:
-            domain = _[6]
-        requests_by_domain[domain] = requests_by_domain[domain]+1 if domain in requests_by_domain else 1
-        peer_status = _[8].split("/")[0]
-        peer_status_counts[peer_status] = peer_status_counts[peer_status]+1 if peer_status in peer_status_counts else 1
-        entries.append(dict(zip(LOG_FIELD_NAMES, _)))
+        bytes['client_ip'][_[2]] = bytes['client_ip'][_[2]] + int(_[4]) if _[2] in bytes['client_ip'] else int(_[4])
 
-    save_toml(STATUS_CODES_FILE, status_code_counts)
+    save_toml(STATUS_CODES_FILE, requests['status_code'])
 
-    client_ips = read_toml(CLIENT_IPS_FILE)
-    requests_by = {
-        'client_ip': {k: v for k, v in sorted(requests_by_client.items(), key=lambda item: item[1], reverse=True)},
-        'method': {k: v for k, v in sorted(requests_by_method.items(), key=lambda item: item[1], reverse=True)},
-        'domain': {k: v for k, v in sorted(requests_by_domain.items(), key=lambda item: item[1], reverse=True)},
-    }
+    splits['save_status_codes'] = time()
+
     if location:
-        client_ips[location] = list(requests_by['client_ip'].keys())
-        #client_ips = {'location': list(requests_by_client.keys())}
+        client_ips = read_toml(CLIENT_IPS_FILE)
+        client_ips[location] = list(requests['client_ip'].keys())
         save_toml(CLIENT_IPS_FILE, client_ips)
+
+    splits['save_client_ips'] = time()
+
+    last_split = splits['start']
+    durations = {}
+    for key, timestamp in splits.items():
+        if key != 'start':
+            duration = round((splits[key] - last_split), 3)
+            durations[key] = f"{duration:.3f}"
+            last_split = timestamp
 
     return {
         'entries': list(entries),
-        #'hits_by_cluster': hits_by_cluster,
-        'hits_by_server': hits_by_server,
-        'requests_by_client_ip': requests_by['client_ip'],
-        'requests_by_method': requests_by['method'],
-        'requests_by_domain': requests_by['domain'],
-        'hits_by_status_code': status_code_counts,
-        'bytes_by_client_ip': bytes_by_client_ip,
-        'peer_status_counts': peer_status_counts
+        'requests_by_server': requests['server'],
+        'requests_by_client_ip': requests['client_ip'],
+        'requests_by_method': requests['method'],
+        'requests_by_domain': requests['domain'],
+        'requests_by_status_code': requests['status_code'],
+        'requests_by_how': requests['how'],
+        'bytes_by_client_ip': bytes['client_ip'],
+        'durations': durations,
     }

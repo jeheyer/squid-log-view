@@ -5,6 +5,15 @@ from traceback import format_exc
 app = Flask(__name__, static_url_path='/static')
 app.config['JSON_SORT_KEYS'] = False
 
+INTERVALS = {
+    '120': "Last 2 Mintues",
+    '300': "Last 5 Mintues",
+    '600': "Last 10 Mintues",
+    '1800': "Last 30 Mintues",
+    '3600': "Last 1 Hour",
+    '1440': "Last 4 Hours",
+    '86400': "Last 1 Day",
+}
 
 @app.route("/")
 @app.route("/index.html")
@@ -20,14 +29,15 @@ def _top():
     try:
         locations = get_locations_list()
         location = request.args.get('location')
+        interval = request.args.get('interval')
         if location:
             servers = get_servers().get(location, [])
             client_ips = get_client_ips().get(location, [])
             status_codes = get_status_codes()
-            #return servers
         else:
             servers = []
-        return render_template('top.html', locations=locations, servers=servers, client_ips=client_ips)
+            client_ips = []
+        return render_template('top.html', locations=locations, interval=interval, location=location, servers=servers, client_ips=client_ips, status_codes=status_codes, intervals=INTERVALS)
     except:
         return Response(format_exc(), 500, content_type="text/plain")
 
