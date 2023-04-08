@@ -2,6 +2,7 @@ from os import path
 from tomli import load
 from tomli_w import dump
 
+SETTINGS_FILE = 'settings.toml'
 LOCATIONS_FILE = 'locations.toml'
 SERVERS_FILE = 'servers.toml'
 CLIENT_IPS_FILE = 'client_ips.toml'
@@ -28,6 +29,11 @@ def save_toml(file_name: str, data: dict):
             dump(data, fp)
     except Exception as e:
         raise e
+
+
+def get_settings() -> dict:
+
+    return read_toml(SETTINGS_FILE)
 
 
 def get_locations() -> dict:

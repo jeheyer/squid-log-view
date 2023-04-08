@@ -11,7 +11,7 @@
 <meta http-equiv="Expires" content="0" />
 <style>
 table	{ width: 100%; border-spacing: 2px; border-collapse: collapse; border: 1px solid black; }
-th,td	{ font-family: arial; text-align: left; font-size:4; border: 1px solid black; padding: 4px; }
+p,th,td	{ font-family: arial; text-align: left; font-size: 10px; border: 1px solid black; padding: 4px; }
 tr.even-good td { background-color: #aaffcc; }
 tr.odd-good td { background-color: #aaf0cc; }
 tr.even-warn td { background-color: #f0f0aa; }
@@ -22,16 +22,28 @@ tr.odd-error td { background-color: #f9aaaa; }
 </head>
 <body>
 <p><span id="num_rows">{{num_entries}}</span> entries match query</p>
-<!-- Main table -->
 <table style="width:100%", border="1">
     <tr>
-    {% for field in fields %}
-        <th>{{field}}</th>
+    {% for k,v in fields.items() %}
+        <th>{{v}}</th>
     {% endfor %}
     </tr>
-
     {% for entry in data.entries %}
-    <tr>
+        {% if entry.code == 503 %}
+            <tr class="even-error">
+        {% elif entry.code == "TCP_DENIED/403" %}
+            <tr class="even-warn">
+        {% elif entry.code == "TCP_MISS/403" %}
+            <tr class="even-warn">
+        {% elif entry.code == "NONE/400" %}
+            <tr class="even-warn">
+        {% else %}
+            {%if loop.index is divisibleby 2 %}
+                 <tr class="even-good">
+            {% else %}
+                 <tr class="odd-good">
+            {% endif %}
+        {% endif %}
         <td>{{entry.timestamp}}</td>
         <td>{{entry.elapsed}}</td>
         <td>{{entry.client_ip}}</td>
@@ -45,129 +57,5 @@ tr.odd-error td { background-color: #f9aaaa; }
     </tr>
     {% endfor %}
 </table>
-
-<p id="showData"></p>
-<script src="static/ajax-functions.js"></script>
-<script>
-
-function FillTable(div_id, data) {
-
-  const locale = navigator.language;
-
-      // Build a list of colums
-      let columns = [];
-      for (const key in data[0]) {
-        if (columns.indexOf(key) === -1) {
-          columns.push(key);
-        }
-      }
-
-      // Fill Table Header
-      let table = document.createElement("table");
-      let tr = table.insertRow(-1);
-      for (let i = 0; i < columns.length; i++) {
-        let th = document.createElement("th");
-        th.innerHTML = columns[i];
-        tr.appendChild(th);
-      }
-
-      // Fill the rows
-      for (let i = 0; i < data.length; i++) {
-        tr = table.insertRow(-1);
-        //console.log(data[i])
-        for (let j = 0; j < columns.length; j++) {
-          let tabCell = tr.insertCell(-1);
-          let value = data[i][columns[j]];
-          let unit = "";
-          switch (j) {
-            case 0:
-              const timestamp = value * 1000;
-              const date = new Date(timestamp).toLocaleDateString(locale);
-              const time = new Date(timestamp).toLocaleTimeString(locale);
-              value = `${time} ${date}`;
-              break;
-            case 1:
-              let elapsed = value;
-              unit = "s";
-              if (elapsed < 1000)
-                unit = "ms"
-              else {
-                elapsed = elapsed / 1000;
-                if (elapsed > 60)
-                  value = Math.round(elapsed);
-              }
-              value = `${elapsed} ${unit}`;
-              break;
-            case 4:
-              let size = value;
-              let units = ["Bytes","KB","MB","GB","TB","PB"]
-              unit = units[0];
-              for (let i = 1; i < units.length; i++) {
-                if (size > 1000 * i) {
-                  size = Math.round(size / (1000 * i));
-                  unit = units[i];
-                }
-              }
-              value = `${size} ${unit}`;
-              break;
-          }
-          tabCell.innerHTML = value;
-        }
-        tr.className = (i % 2  == 0) ? "even" : "odd";
-        const code = data[i][columns[3]].split("/")[1];
-        if (code == 200)
-            tr.className += "-good";
-        if (code == 304)
-            tr.className += "-good";
-        if (code == 404)
-            tr.className += "-good";
-        if (code == 403) 
-            tr.className += "-warn";
-        if (code == 400) 
-            tr.className += "-warn";
-        if (code == 503) 
-            tr.className += "-error";
-      }
-      var divContainer = document.getElementById(div_id);
-      divContainer.innerHTML = "";
-      divContainer.appendChild(table);
-
-}
-
-</script>
-<script>
-
-//const locale = navigator.language;
-
-var params = {}
-location.search.substr(1).split("&").forEach(function(item) {
-  params[item.split("=")[0]] = item.split("=")[1];
-});
-
-(async() => {
-
-  let ajax_url = "get_data?"
-
-  if (params['location']) {
-    ajax_url += 'location=' + params['location'];
-    if (params['cluster'])
-      ajax_url += '&cluster=' + params['cluster']; 
-    if (params['interval'])
-      ajax_url += '&interval=' + params['interval']; 
-    if (params['client_ip'])
-      ajax_url += '&client_ip=' + params['client_ip']; 
-    if (params['url'])
-      ajax_url += '&url=' + params['url']; 
-    console.log(`Making Ajax call; url = ${ajax_url}`);
-    MakeAjaxCall(ajax_url).then(data => {
-      console.log(`Received ${data.entries.length} rows of data from backend`);
-      //document.getElementById('num_rows').innerText = data.entries.length
-      //FillTable('showData', data.entries);
-    }).catch(console.log);
-  }
-
-})();
-
-</script>
 </body>
 </html>

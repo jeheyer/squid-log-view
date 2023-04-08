@@ -1,8 +1,8 @@
-flask==2.2.3
-gunicorn
+#flask==2.2.3
+#gunicorn
 quart
 hypercorn
 gcloud-aio-storage
 tomli
 tomli_w
-pyyaml
+#pyyaml

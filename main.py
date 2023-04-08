@@ -6,7 +6,6 @@ from math import floor
 from cloud_storage import *
 from local_storage import *
 
-LOG_FIELDS: tuple = ('timestamp', 'elapsed', 'client_ip', 'code', 'bytes', 'method', 'url', 'rfc931', 'how', 'type')
 FILTER_FIELD_NAMES: tuple = ('client_ip', 'code', 'url')
 DEFAULT_INTERVAL: int = 1800
 DEFAULT_FILTER: dict = {}
@@ -65,12 +64,16 @@ def get_data(env_vars: dict = {}) -> dict:
 
     splits = {'start': time()}
 
+    settings = get_settings()
+    assert settings, "Could not load settings.  Does {} exist?".format(SETTINGS_FILE)
+    log_fields = tuple(settings.get('LOG_FIELDS').values())
+    splits['get_settings'] = time()
+
     try:
         locations = get_locations()
     except Exception as e:
         raise e
     assert locations, "Could not load locations.  Does {} exist?".format(LOCATIONS_FILE)
-
     splits['get_locations'] = time()
 
     # Process parameters
@@ -137,7 +140,9 @@ def get_data(env_vars: dict = {}) -> dict:
 
     entries = deque()
     for i, server in enumerate(file_names.keys()):
-        matches = list(process_log(blobs[i], time_range, filter))
+        matches = deque(process_log(blobs[i], time_range, filter))
+        if i in blobs:
+            blobs.remove(i)
         if len(matches) > 0:
             entries.extend(matches)
             requests['server'][server] = len(matches)
@@ -161,31 +166,36 @@ def get_data(env_vars: dict = {}) -> dict:
 
     for entry in newest_first:
 
+        # Convert raw unix timestamp to datatime objecet
         timestamp = int(entry[0].split('.')[0])
         time_str = datetime.fromtimestamp(timestamp)
         entry[0] = f"{time_str}"
 
+        # Convert elapsed time from ms to seconds or minutes
         elapsed = int(entry[1])
         unit = "s";
         if elapsed < 1000:
             unit = "ms"
         else:
-            elapsed = round(elapsed / 1000)
+            elapsed = elapsed / 1000
+            if elapsed > 60:
+                elapsed = round(elapsed)
         entry[1] = f"{elapsed} {unit}"
 
+        # Convert size from Bytes to KB, MB, TB, or PB
         size = int(entry[4])
         unit = "Bytes"
         if size >= 1000:
             for i, unit in enumerate(UNITS):
-                divisor = i + 1
-                size = round(size / (1000 * divisor))
+                size = round(size / 1000, 3)
                 unit = UNITS[i]
                 if size < 1000:
                     break
         entry[4] = f"{size} {unit}"
 
         entries.append(entry)
-    entries = [dict(zip(LOG_FIELDS, entry)) for entry in entries]
+
+    entries = [dict(zip(log_fields, entry)) for entry in entries]
     splits['zip_entries'] = time()
 
     save_toml(STATUS_CODES_FILE, requests['status_code'])
