@@ -8,6 +8,7 @@ __pypackages__/
 .idea/
 .env
 .venv
+*.env
 *.toml
 *.json
 *.xml
