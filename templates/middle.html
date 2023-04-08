@@ -21,8 +21,31 @@ tr.odd-error td { background-color: #f9aaaa; }
 </style>
 </head>
 <body>
-<p><span id="num_rows">0</span> entries match query</p>
+<p><span id="num_rows">{{num_entries}}</span> entries match query</p>
 <!-- Main table -->
+<table style="width:100%", border="1">
+    <tr>
+    {% for field in fields %}
+        <th>{{field}}</th>
+    {% endfor %}
+    </tr>
+
+    {% for entry in data.entries %}
+    <tr>
+        <td>{{entry.timestamp}}</td>
+        <td>{{entry.elapsed}}</td>
+        <td>{{entry.client_ip}}</td>
+        <td>{{entry.code}}</td>
+        <td>{{entry.bytes}}</td>
+        <td>{{entry.method}}</td>
+        <td>{{entry.url}}</td>
+        <td>{{entry.rfc931}}</td>
+        <td>{{entry.how}}</td>
+        <td>{{entry.type}}</td>
+    </tr>
+    {% endfor %}
+</table>
+
 <p id="showData"></p>
 <script src="static/ajax-functions.js"></script>
 <script>
@@ -138,8 +161,8 @@ location.search.substr(1).split("&").forEach(function(item) {
     console.log(`Making Ajax call; url = ${ajax_url}`);
     MakeAjaxCall(ajax_url).then(data => {
       console.log(`Received ${data.entries.length} rows of data from backend`);
-      document.getElementById('num_rows').innerText = data.entries.length
-      FillTable('showData', data.entries);
+      //document.getElementById('num_rows').innerText = data.entries.length
+      //FillTable('showData', data.entries);
     }).catch(console.log);
   }
 

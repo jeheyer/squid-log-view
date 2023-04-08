@@ -1,5 +1,6 @@
 from asyncio import run
 from collections import deque, Counter
+from datetime import datetime
 from time import time
 from math import floor
 from cloud_storage import *
@@ -9,6 +10,7 @@ LOG_FIELDS: tuple = ('timestamp', 'elapsed', 'client_ip', 'code', 'bytes', 'meth
 FILTER_FIELD_NAMES: tuple = ('client_ip', 'code', 'url')
 DEFAULT_INTERVAL: int = 1800
 DEFAULT_FILTER: dict = {}
+UNITS: tuple = ("KB", "MB", "GB", "TB", "PB")
 
 
 def process_log(blob, time_range: tuple, filter: dict = {}) -> list:
@@ -130,44 +132,63 @@ def get_data(env_vars: dict = {}) -> dict:
     splits['save_servers'] = time()
 
     # Read the log files from the bucket
-    entries: deque = deque()
     blobs = run(read_files_from_bucket(bucket_name, file_names.values(), bucket_type=bucket_type, auth_file=auth_file))
-
     splits['read_objects'] = time()
 
+    entries = deque()
     for i, server in enumerate(file_names.keys()):
         matches = list(process_log(blobs[i], time_range, filter))
         if len(matches) > 0:
             entries.extend(matches)
             requests['server'][server] = len(matches)
     del blobs
-
     splits['process_objects'] = time()
+
+    # Perform Total Counts
+    requests['client_ip'] = Counter([_[2] for _ in entries])
+    requests['status_code'] = Counter([_[3] for _ in entries])
+    requests['method'] = Counter([_[5] for _ in entries])
+    requests['domain'] = Counter([_[6][7:].split("/")[0] if _[6].startswith("http:") else _[6] for _ in entries])
+    requests['how'] = Counter([_[8].split("/")[0] for _ in entries])
+    for _ in entries:
+        bytes['client_ip'][_[2]] = bytes['client_ip'][_[2]] + int(_[4]) if _[2] in bytes['client_ip'] else int(_[4])
+    splits['do_counts'] = time()
 
     # Sort by timestamp reversed, so that latest entries are first in the list
     newest_first: list = sorted(entries, key=lambda x: x[0][:10], reverse=True)
     entries.clear()
-    entries = [dict(zip(LOG_FIELDS, _)) for _ in newest_first]
-
     splits['sort_entries'] = time()
 
-    # Perform Total Counts
-    requests['client_ip'] = Counter([_[2] for _ in newest_first])
-    requests['status_code'] = Counter([_[3] for _ in newest_first])
-    requests['method'] = Counter([_[5] for _ in newest_first])
-    requests['domain'] = Counter([_[6][7:].split("/")[0] if _[6].startswith("http:") else _[6] for _ in newest_first])
-    requests['how'] = Counter([_[8].split("/")[0] for _ in newest_first])
+    for entry in newest_first:
 
+        timestamp = int(entry[0].split('.')[0])
+        time_str = datetime.fromtimestamp(timestamp)
+        entry[0] = f"{time_str}"
 
-    #bytes['client_ip'] = Counter([_[2] if _[6].startswith("http:") else _[4] for _ in newest_first]),
+        elapsed = int(entry[1])
+        unit = "s";
+        if elapsed < 1000:
+            unit = "ms"
+        else:
+            elapsed = round(elapsed / 1000)
+        entry[1] = f"{elapsed} {unit}"
 
-    splits['do_counts'] = time()
+        size = int(entry[4])
+        unit = "Bytes"
+        if size >= 1000:
+            for i, unit in enumerate(UNITS):
+                divisor = i + 1
+                size = round(size / (1000 * divisor))
+                unit = UNITS[i]
+                if size < 1000:
+                    break
+        entry[4] = f"{size} {unit}"
 
-    for _ in newest_first:
-        bytes['client_ip'][_[2]] = bytes['client_ip'][_[2]] + int(_[4]) if _[2] in bytes['client_ip'] else int(_[4])
+        entries.append(entry)
+    entries = [dict(zip(LOG_FIELDS, entry)) for entry in entries]
+    splits['zip_entries'] = time()
 
     save_toml(STATUS_CODES_FILE, requests['status_code'])
-
     splits['save_status_codes'] = time()
 
     if location:
@@ -184,6 +205,7 @@ def get_data(env_vars: dict = {}) -> dict:
             duration = round((splits[key] - last_split), 3)
             durations[key] = f"{duration:.3f}"
             last_split = timestamp
+    durations['total'] = f"{round(last_split - splits['start'], 3):.3f}"
 
     return {
         'entries': list(entries),
