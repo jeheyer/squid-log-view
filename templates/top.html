@@ -10,6 +10,9 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0" />
 <style>
+table	{ width: 100%; border-spacing: 2px; border-collapse: collapse; border: 1px solid black; }
+p,th,td	{ font-family: arial; text-align: left; font-size: 10px; border: 1px solid black; padding: 4px; }
+
 *{
     box-sizing: border-box;
     margin: 0;
@@ -105,7 +108,7 @@ location.search.substr(1).split("&").forEach(function(item) {
 
   // Get current date/time
   const now = Date.now();
-  document.getElementById('end_time').value = now;
+  document.getElementById('end_time').value = Math.round(now / 1000);
 
   /* If Location changes, re-populate cluster list
   const selector = document.getElementById('location_list');

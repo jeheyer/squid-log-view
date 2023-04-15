@@ -12,7 +12,7 @@ DEFAULT_FILTER: dict = {}
 UNITS: tuple = ("KB", "MB", "GB", "TB", "PB")
 
 
-def process_log(blob, time_range: tuple, filter: dict = {}) -> list:
+def process_log(blob, time_range: tuple, filter: dict = {}, log_fields={}) -> list:
 
     try:
 
@@ -20,7 +20,7 @@ def process_log(blob, time_range: tuple, filter: dict = {}) -> list:
 
         if filter:
             filter_indexes: dict = {}
-            for i, field_name in enumerate(LOG_FIELDS):
+            for i, field_name in enumerate(log_fields):
                 if field_name in filter:
                     filter_indexes[i] = field_name
 
@@ -85,10 +85,11 @@ def get_data(env_vars: dict = {}) -> dict:
             location: str = env_vars.get('location')
             return list(locations[location])
 
+    now = time()
     # Parse parameters to determine time range
-    interval = int(env_vars['interval']) if 'interval' in env_vars else DEFAULT_INTERVAL
-    end_time = int(env_vars['end_time']) if 'end_time' in env_vars else floor(time())
-    start_time = int(env_vars['start_time']) if 'start_time' in env_vars else end_time - interval
+    interval = int(env_vars.get('interval', settings['DEFAULT_VALUES'].get('interval', 900)))
+    end_time = int(env_vars.get('end_time', floor(now)))
+    start_time = int(env_vars.get('start_time', end_time - interval))
     time_range = (start_time, end_time)
 
     # Parse parameters to determine filter
@@ -140,7 +141,7 @@ def get_data(env_vars: dict = {}) -> dict:
 
     entries = deque()
     for i, server in enumerate(file_names.keys()):
-        matches = deque(process_log(blobs[i], time_range, filter))
+        matches = deque(process_log(blobs[i], time_range, filter, log_fields))
         if i in blobs:
             blobs.remove(i)
         if len(matches) > 0:
@@ -227,4 +228,5 @@ def get_data(env_vars: dict = {}) -> dict:
         'requests_by_how': requests['how'],
         'bytes_by_client_ip': bytes['client_ip'],
         'durations': durations,
+        'time_range': time_range,
     }

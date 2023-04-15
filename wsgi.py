@@ -1,56 +1,64 @@
 from flask import Flask, request, jsonify, render_template, Response
-from main import *
 from traceback import format_exc
+from main import *
 
 app = Flask(__name__, static_url_path='/static')
 app.config['JSON_SORT_KEYS'] = False
 
 
-
 @app.route("/")
 @app.route("/index.html")
 def _root():
+
     try:
         return render_template('index.html')
-    except:
+    except Exception as e:
         return Response(format_exc(), 500, content_type="text/plain")
 
 
 @app.route("/top.html")
 def _top():
+
     try:
         settings = get_settings()
         intervals = settings.get('INTERVALS')
+        field_names = settings.get('FIELD_NAMES')
         locations = get_locations_list()
-        location = request.args.get('location')
-        interval = request.args.get('interval')
+        status_codes = get_status_codes()
+        defaults = settings['DEFAULT_VALUES']
+        interval = defaults.get('interval', 900)
 
-        if location:
+        if location := request.args.get('location', defaults.get('location')):
             servers = get_servers().get(location, [])
             client_ips = get_client_ips().get(location, [])
-            status_codes = get_status_codes()
         else:
             servers = []
             client_ips = []
-        return render_template('top.html', locations=locations, interval=interval, location=location, servers=servers, client_ips=client_ips, status_codes=status_codes, intervals=intervals)
-    except:
+            status_codes = []
+        return render_template(request.path, locations=locations, interval=interval, location=location, servers=servers,
+                               client_ips=client_ips, status_codes=status_codes, intervals=intervals)
+    except Exception as e:
         return Response(format_exc(), 500, content_type="text/plain")
 
 
 @app.route("/middle.html")
 def _middle():
+
     try:
-        data = get_data(request.args)
-        return render_template('middle.html', data=data)
-    except:
+        settings = get_settings()
+        field_names = settings.get('LOG_FIELDS')
+        data = get_data(request.args) if 'location' in request.args else dict(entries=[])
+        return render_template(request.path, data=data, num_entries=len(data['entries']), fields=field_names)
+    except Exception as e:
         return Response(format_exc(), 500, content_type="text/plain")
 
 
 @app.route("/bottom.html")
 def _bottom():
+
     try:
-        return render_template('bottom.html', locations=get_locations())
-    except:
+        return render_template(request.path, locations=get_locations())
+    except Exception as e:
         return Response(format_exc(), 500, content_type="text/plain")
 
 
@@ -62,7 +70,7 @@ def _get_data():
         response_headers = settings.get('RESPONSE_HEADERS')
         data = get_data(request.args)
         return jsonify(data), response_headers
-    except:
+    except Exception as e:
         return Response(format_exc(), 500, content_type="text/plain")
 
 

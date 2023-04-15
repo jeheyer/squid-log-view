@@ -21,6 +21,17 @@ tr.odd-error td { background-color: #f9aaaa; }
 </style>
 </head>
 <body>
+<script>
+
+// refresh the top frame
+document.getElementById('top_iframe').contentWindow.location.reload();
+
+var params = {}
+location.search.substr(1).split("&").forEach(function(item) {
+  params[item.split("=")[0]] = item.split("=")[1];
+});
+
+</script>
 <p><span id="num_rows">{{num_entries}}</span> entries match query</p>
 <table style="width:100%", border="1">
     <tr>
