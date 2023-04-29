@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from squid_log_viewer import get_squid_data
+from main import *
+
 
 def main():
 
@@ -12,8 +13,8 @@ def main():
     from guppy import hpy
 
     start_time: time = time()
-    options = {'location': "GCP"}
-    data = get_squid_data(options)
+    options = {'location': "OTL"}
+    data = get_data(options)
     print("seconds_to_execute:", round((time() - start_time), 3))
     print(data['hits_by_host'], data['requests_by_client_ip'], data['hits_by_status_code'], data['bytes_by_client_ip'])
     if len(data['entries']) > 0:

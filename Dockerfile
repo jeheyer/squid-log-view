@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bullseye
+FROM python:3.10-slim-bullseye
 MAINTAINER johnnylingo
 ENV PORT=8080
 ENV APP_DIR=/opt

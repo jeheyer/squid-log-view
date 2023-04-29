@@ -84,7 +84,7 @@ fieldset input {
     <legend>Interval:</legend>
     <select name="interval" id="interval_list" size=1>
       {% for k, v in intervals.items() %}
-        <option value="{{k}}"{% if interval == k %} selected{% endif %}>{{v}}</option>
+        <option value="{{k}}"{% if k == interval %} selected{% endif %}>{{v}}</option>
       {% endfor %}
     </select>
   </fieldset>
@@ -93,8 +93,6 @@ fieldset input {
   <input type="reset" value="Reset Options">
   </form>
   <!-- End Form -->
-<! script src="static/ajax-functions.js"></script>
-<! script src="static/my-functions.js"></script>
 <script>
 
 var params = {}
@@ -104,49 +102,15 @@ location.search.substr(1).split("&").forEach(function(item) {
 
 (async() => {
 
-  let ajax_url = "get_data?"
-
   // Get current date/time
   const now = Date.now();
   document.getElementById('end_time').value = Math.round(now / 1000);
 
-  /* If Location changes, re-populate cluster list
+  // If Locations drop-down changes, refresh this frame's query string
   const selector = document.getElementById('location_list');
   selector.onchange = (event) => {
     params['location'] = event.target.value;
-    MakeAjaxCall(ajax_url + "action=get_clusters&location=" + params['location']).then(clusters => {
-      PopulateDropDown('cluster_list', clusters, params['cluster']);
-    }).catch(console.log);
-  } */
-
-  /* Populate locations drop-down list
-  MakeAjaxCall(ajax_url + "action=get_locations").then(locations => {
-    PopulateDropDown('location_list', locations, params['location']);
-  }).catch(console.log);
-
-    */
-
-  /* Do the same for Clusters
-  if (params['location']) {
-    MakeAjaxCall(ajax_url + "action=get_clusters&location=" + params['location']).then(clusters => {
-      PopulateDropDown('cluster_list', clusters, params['cluster']);
-    }).catch(console.log);
-  } */
-
-  if (params['location']) {
-    ajax_url += "location=" + params['location']
-    if (params['cluster'])
-      ajax_url += "&cluster=" + params['cluster'];
-    if (params['interval'])
-      ajax_url += '&interval=' + params['interval']; 
-    if (params['url'])
-      ajax_url += '&url=' + params['url']; 
-  /* Do the same for Client IPs
-    console.log(`Populate client ip list with this call; url = ${ajax_url}`);
-    MakeAjaxCall(ajax_url).then(data => {
-      PopulateDropDown('client_ip_list', data.requests_by_client_ip, params['client_ip']);
-    }).catch(console.log);
-   */
+    self.location.search = "?location=" + params['location'];
   }
 
 })();

@@ -26,7 +26,7 @@ def _top():
         locations = get_locations_list()
         status_codes = get_status_codes()
         defaults = settings['DEFAULT_VALUES']
-        interval = defaults.get('interval', 900)
+        interval = str(defaults.get('interval', 900))
 
         if location := request.args.get('location', defaults.get('location')):
             servers = get_servers().get(location, [])
@@ -46,9 +46,12 @@ def _middle():
 
     try:
         settings = get_settings()
+        server = request.args.get('server')
+        client_ip = request.args.get('client_ip')
         field_names = settings.get('LOG_FIELDS')
         data = get_data(request.args) if 'location' in request.args else dict(entries=[])
-        return render_template(request.path, data=data, num_entries=len(data['entries']), fields=field_names)
+        return render_template(request.path, server=server, data=data, num_entries=len(data['entries']),
+                               fields=field_names, client_ip=client_ip)
     except Exception as e:
         return Response(format_exc(), 500, content_type="text/plain")
 

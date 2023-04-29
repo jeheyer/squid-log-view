@@ -7,7 +7,6 @@ from cloud_storage import *
 from local_storage import *
 
 FILTER_FIELD_NAMES: tuple = ('client_ip', 'code', 'url')
-DEFAULT_INTERVAL: int = 1800
 DEFAULT_FILTER: dict = {}
 UNITS: tuple = ("KB", "MB", "GB", "TB", "PB")
 
@@ -116,8 +115,8 @@ def get_data(env_vars: dict = {}) -> dict:
 
     splits['list_objects'] = time()
 
-    requests = {'server': {}, 'client_ip': {}, 'method': {}, 'status_code': {}, 'domain': {}}
-    bytes = {'server': {}, 'client_ip': {}, 'domain': {}}
+    request_counts = {'server': {}, 'client_ip': {}, 'method': {}, 'status_code': {}, 'domain': {}}
+    byte_counts = {'server': {}, 'client_ip': {}, 'domain': {}}
 
     # Populate list of files to read from bucket
     file_names: dict = {}
@@ -125,13 +124,19 @@ def get_data(env_vars: dict = {}) -> dict:
         servers[location] = []
     for o in objects:
         if o['updated'] < start_time:
-            continue
-        server = o['name'].split('/')[-1].replace('.log', '')
-        servers[location].append(server)
-        file_names[server] = o['name']
-        requests['server'][server] = 0
+            continue  # ignore this object, since the modified time was earlier than start time
+        server_name = o['name'].split('/')[-1].replace('.log', '')
+        match = True
+        if server and server != "":
+            if server_name != server:
+                match = False
+        if match:
+            servers[location].append(server_name)
+            file_names[server_name] = o['name']
+            request_counts['server'][server_name] = 0
 
-    save_toml(SERVERS_FILE, servers)
+    if not server or server == "":
+        save_toml(SERVERS_FILE, servers)
 
     splits['save_servers'] = time()
 
@@ -146,18 +151,18 @@ def get_data(env_vars: dict = {}) -> dict:
             blobs.remove(i)
         if len(matches) > 0:
             entries.extend(matches)
-            requests['server'][server] = len(matches)
+            request_counts['server'][server] = len(matches)
     del blobs
     splits['process_objects'] = time()
 
     # Perform Total Counts
-    requests['client_ip'] = Counter([_[2] for _ in entries])
-    requests['status_code'] = Counter([_[3] for _ in entries])
-    requests['method'] = Counter([_[5] for _ in entries])
-    requests['domain'] = Counter([_[6][7:].split("/")[0] if _[6].startswith("http:") else _[6] for _ in entries])
-    requests['how'] = Counter([_[8].split("/")[0] for _ in entries])
+    request_counts['client_ip'] = Counter([_[2] for _ in entries])
+    request_counts['status_code'] = Counter([_[3] for _ in entries])
+    request_counts['method'] = Counter([_[5] for _ in entries])
+    request_counts['domain'] = Counter([_[6][7:].split("/")[0] if _[6].startswith("http:") else _[6] for _ in entries])
+    request_counts['how'] = Counter([_[8].split("/")[0] for _ in entries])
     for _ in entries:
-        bytes['client_ip'][_[2]] = bytes['client_ip'][_[2]] + int(_[4]) if _[2] in bytes['client_ip'] else int(_[4])
+        byte_counts['client_ip'][_[2]] = byte_counts['client_ip'][_[2]] + int(_[4]) if _[2] in byte_counts['client_ip'] else int(_[4])
     splits['do_counts'] = time()
 
     # Sort by timestamp reversed, so that latest entries are first in the list
@@ -199,12 +204,12 @@ def get_data(env_vars: dict = {}) -> dict:
     entries = [dict(zip(log_fields, entry)) for entry in entries]
     splits['zip_entries'] = time()
 
-    save_toml(STATUS_CODES_FILE, requests['status_code'])
+    save_toml(STATUS_CODES_FILE, request_counts['status_code'])
     splits['save_status_codes'] = time()
 
     if location:
         client_ips = read_toml(CLIENT_IPS_FILE)
-        client_ips[location] = list(requests['client_ip'].keys())
+        client_ips[location] = list(request_counts['client_ip'].keys())
         save_toml(CLIENT_IPS_FILE, client_ips)
 
     splits['save_client_ips'] = time()
@@ -220,13 +225,14 @@ def get_data(env_vars: dict = {}) -> dict:
 
     return {
         'entries': list(entries),
-        'requests_by_server': requests['server'],
-        'requests_by_client_ip': requests['client_ip'],
-        'requests_by_method': requests['method'],
-        'requests_by_domain': requests['domain'],
-        'requests_by_status_code': requests['status_code'],
-        'requests_by_how': requests['how'],
-        'bytes_by_client_ip': bytes['client_ip'],
+        'requests_by_server': request_counts['server'],
+        'requests_by_client_ip': request_counts['client_ip'],
+        'requests_by_method': request_counts['method'],
+        'requests_by_domain': request_counts['domain'],
+        'requests_by_status_code': request_counts['status_code'],
+        'requests_by_how': request_counts['how'],
+        'bytes_by_client_ip': byte_counts['client_ip'],
         'durations': durations,
         'time_range': time_range,
+        'num_servers': len(servers[location]),
     }
