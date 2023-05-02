@@ -153,6 +153,7 @@ def get_data(env_vars: dict = {}) -> dict:
             entries.extend(matches)
             request_counts['server'][server] = len(matches)
     del blobs
+    del matches
     splits['process_objects'] = time()
 
     # Perform Total Counts

@@ -13,15 +13,16 @@ def main():
     from guppy import hpy
 
     start_time: time = time()
-    options = {'location': "OTL"}
+    options = {'location': "OTC"}
     data = get_data(options)
     print("seconds_to_execute:", round((time() - start_time), 3))
-    print(data['hits_by_host'], data['requests_by_client_ip'], data['hits_by_status_code'], data['bytes_by_client_ip'])
+    #print(data['hits_by_host'], data['requests_by_client_ip'], data['hits_by_status_code'], data['bytes_by_client_ip'])
     if len(data['entries']) > 0:
         print(f"now: {floor(start_time)}\n first = {data['entries'][0]}\n last = {data['entries'][-1]}")
-        random_samples = sample(data['entries'],3)
+        random_samples = sample(data['entries'], 5)
+        print("random_samples:")
         for _ in range(len(random_samples)):
-            print(f" random sample {_}: {random_samples[_]}")
+            print(f"{_}: {random_samples[_]}")
     h = hpy()
     print(h.heap())
 
