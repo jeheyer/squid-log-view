@@ -45,7 +45,7 @@ def process_log(blob, time_range: tuple, filter: dict = {}, log_fields={}) -> li
             if filter:
                 match = False
                 for i, field_name in filter_indexes.items():
-                    if filter[field_name] in entry[i]:
+                    if filter.get(field_name) in entry[i]:
                         match = True
                     else:
                         match = False
@@ -92,10 +92,13 @@ def get_data(env_vars: dict = {}) -> dict:
     time_range = (start_time, end_time)
 
     # Parse parameters to determine filter
-    filter: dict = DEFAULT_FILTER
-    for f in FILTER_FIELD_NAMES:
-        if f in env_vars and env_vars[f] != "":
-            filter[f] = env_vars[f]
+    filter: dict = {
+        'code': env_vars.get('status_code' ,""),
+        'client_ip': env_vars.get('client_ip', ""),
+    }
+    #for f in FILTER_FIELD_NAMES:
+    #    if f in env_vars and env_vars[f] != "":
+    #        filter[f] = env_vars[f]
 
     # Populate hosts
     if location := env_vars.get('location'):
@@ -152,8 +155,8 @@ def get_data(env_vars: dict = {}) -> dict:
         if len(matches) > 0:
             entries.extend(matches)
             request_counts['server'][server] = len(matches)
+        del matches
     del blobs
-    del matches
     splits['process_objects'] = time()
 
     # Perform Total Counts
@@ -226,6 +229,7 @@ def get_data(env_vars: dict = {}) -> dict:
 
     return {
         'entries': list(entries),
+        'filter': filter,
         'requests_by_server': request_counts['server'],
         'requests_by_client_ip': request_counts['client_ip'],
         'requests_by_method': request_counts['method'],

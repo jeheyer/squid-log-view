@@ -48,10 +48,11 @@ def _middle():
         settings = get_settings()
         server = request.args.get('server')
         client_ip = request.args.get('client_ip')
+        env_vars = request.args
         field_names = settings.get('LOG_FIELDS')
         data = get_data(request.args) if 'location' in request.args else dict(entries=[])
         return render_template(request.path, server=server, data=data, num_entries=len(data['entries']),
-                               fields=field_names, client_ip=client_ip)
+                               fields=field_names, client_ip=client_ip, env_vars=request.args)
     except Exception as e:
         return Response(format_exc(), 500, content_type="text/plain")
 
