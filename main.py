@@ -1,6 +1,5 @@
 from asyncio import run
 from collections import deque, Counter
-from datetime import datetime
 from time import time
 from math import floor
 from cloud_storage import *
@@ -76,13 +75,14 @@ def get_data(env_vars: dict = {}) -> dict:
     splits['get_locations'] = time()
 
     # Process parameters
-    if 'action' in env_vars:
-        action: str = env_vars.get('action', None)
-        if action == "get_locations":
-            return list(locations.keys())
-        if action == "get_servers":
-            location: str = env_vars.get('location')
-            return list(locations[location])
+    location = env_vars.get('location')
+    action = env_vars.get('action')
+    if action == "get_locations":
+        return list(locations.keys())
+    if action == "get_servers":
+        servers = get_servers()
+        if location in servers:
+            return list(servers[location])
 
     now = time()
     # Parse parameters to determine time range
@@ -93,7 +93,7 @@ def get_data(env_vars: dict = {}) -> dict:
 
     # Parse parameters to determine filter
     filter: dict = {
-        'code': env_vars.get('status_code' ,""),
+        'code': env_vars.get('status_code', ""),
         'client_ip': env_vars.get('client_ip', ""),
     }
     #for f in FILTER_FIELD_NAMES:
@@ -107,9 +107,10 @@ def get_data(env_vars: dict = {}) -> dict:
         file_path = locations[location]['file_path']
         auth_file = locations[location]['auth_file']
         server = env_vars.get('server')
+        servers = {location: []}
 
     # Get servers for each location
-    servers = read_toml(SERVERS_FILE)
+    servers_cache = read_toml(SERVERS_FILE)
 
     splits['get_servers'] = time()
 
@@ -123,11 +124,12 @@ def get_data(env_vars: dict = {}) -> dict:
 
     # Populate list of files to read from bucket
     file_names: dict = {}
-    if location:
-        servers[location] = []
+
     for o in objects:
+
         if o['updated'] < start_time:
             continue  # ignore this object, since the modified time was earlier than start time
+
         server_name = o['name'].split('/')[-1].replace('.log', '')
         match = True
         if server and server != "":
@@ -137,6 +139,10 @@ def get_data(env_vars: dict = {}) -> dict:
             servers[location].append(server_name)
             file_names[server_name] = o['name']
             request_counts['server'][server_name] = 0
+
+    if action == "get_servers":
+        save_toml(SERVERS_FILE, servers)
+        return list(servers[location])
 
     if not server or server == "":
         save_toml(SERVERS_FILE, servers)

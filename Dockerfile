@@ -1,5 +1,4 @@
-FROM python:3.10-slim-bullseye
-MAINTAINER johnnylingo
+FROM python:3.11-slim-bullseye
 ENV PORT=8080
 ENV APP_DIR=/opt
 ENV APP_APP=wsgi:app

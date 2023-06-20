@@ -3,7 +3,7 @@ from os import path
 from gcloud.aio.auth import Token
 from gcloud.aio.storage import Storage
 #from boto3 import Session
-#from io import BytesIO
+from io import BytesIO
 from datetime import datetime
 
 
@@ -34,16 +34,19 @@ async def get_objects_list(bucket_name: str, prefix: str = "", bucket_type: str 
             token = authenticate_to_gcs(auth_file)
             params = {'prefix': prefix}
             async with Storage(token=token) as storage:
-                _ = await storage.list_objects(bucket_name, params=params, timeout=3)
+                while True:
+                    _ = await storage.list_objects(bucket_name, params=params, timeout=10)
+                    for o in _.get('items', []):
+                        if size := int(o.get('size', 0)) > 0:  # Ignore zero byte files
+                            updated_mdy = o['updated'][:10]
+                            updated_hms = o['updated'][11:19]
+                            updated = datetime.timestamp(datetime.strptime(updated_mdy + updated_hms, "%Y-%m-%d%H:%M:%S"))
+                            objects.append({'name': o['name'], 'updated': updated})
+                    if page_token := _.get('nextPageToken'):
+                        params['pageToken'] = page_token
+                    else:
+                        break
             await token.close()
-
-            for o in _.get('items', []):
-                if int(o.get('size', 0)) > 0:
-                    updated_mdy = o['updated'][:10]
-                    updated_hms = o['updated'][11:19]
-                    updated = datetime.timestamp(datetime.strptime(updated_mdy + updated_hms, "%Y-%m-%d%H:%M:%S"))
-                    objects.append({'name': o['name'], 'updated': updated})
-
 
     except Exception as e:
         raise e
@@ -61,7 +64,7 @@ async def read_files_from_bucket(bucket_name: str, file_names: list, bucket_type
 
             # Fetch the files
             async with Storage(token=token) as storage:
-                tasks = (storage.download(bucket_name, file_name) for file_name in file_names)
+                tasks = (storage.download(bucket_name, file_name, timeout=10) for file_name in file_names)
                 blobs = await gather(*tasks)
             await token.close()
 
