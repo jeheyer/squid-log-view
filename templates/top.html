@@ -46,7 +46,7 @@ fieldset input {
   <form method="get" action="middle.html" target="middle_iframe">
   <fieldset>
     <legend>Location:</legend>
-    <select name="location" id="location_list" size=1>
+    <select name="location" id="location" size=1>
       <option value="" selected>All Locations</option>
       {% for v in locations %}
         <option value="{{v}}"{% if v == location %} selected{% endif %}>{{v}}</option>
@@ -54,11 +54,11 @@ fieldset input {
     </select>
   </fieldset>
   <fieldset>
-    <legend>Server:</legend>
-    <select name="server" id="server_list" size=1>
-      <option value="" selected>All Servers</option>
-      {% for v in servers %}
-        <option value="{{v}}">{{v}}</option>
+    <legend>Server Group:</legend>
+    <select name="server_group" id="server_group" size=1>
+      <option value="" selected>All Server Groups</option>
+      {% for v in server_groups %}
+        <option value="{{v}}"{% if v == server_group %} selected{% endif %}>{{v}}</option>
       {% endfor %}
     </select>
   </fieldset>
@@ -73,7 +73,7 @@ fieldset input {
   </fieldset>
   <fieldset>
     <legend>Response Code:</legend>
-    <select name="status_code" id="status_code_list" size=1>
+    <select name="status_code" id="status_code" size=1>
       <option value="" selected>All Status Codes</option>
       {% for v in status_codes %}
         <option value="{{v}}">{{v}}</option>
@@ -82,7 +82,7 @@ fieldset input {
   </fieldset>
   <fieldset>
     <legend>Interval:</legend>
-    <select name="interval" id="interval_list" size=1>
+    <select name="interval" id="interval" size=1>
       {% for k, v in intervals.items() %}
         <option value="{{k}}"{% if k == interval %} selected{% endif %}>{{v}}</option>
       {% endfor %}
@@ -111,16 +111,21 @@ function UpdateTime() {
 
 (async() => {
 
-  UpdateTime();
+  let query_string = "?";
 
-  // If Locations drop-down changes, refresh this frame's query string
-  const selector = document.getElementById('location_list');
-  selector.onchange = (event) => {
-    params['location'] = event.target.value;
-    self.location.search = "?location=" + params['location'];
-    UpdateTime();
-  }
-
+  // If certain drop-downs change, refresh query string & uptime time
+  const selector_fields = ['location', 'server_group', 'interval'];
+  selector_fields.forEach((selector_field) => {
+    const selector = document.getElementById(selector_field);
+    selector.onchange = (event) => {
+      params[selector_field] = event.target.value;
+      query_string += `&${selector_field}=${params[selector_field]}`;
+      //self.location.search.set(selector_field, event.target.value);
+      UpdateTime();
+      //console.log(`field ${selector_field} has changed to ${params[selector_field]}`);
+      self.location.search = query_string;
+    }
+  });
 })();
 
 </script>

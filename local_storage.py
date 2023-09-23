@@ -41,7 +41,7 @@ def get_locations() -> dict:
     return read_toml(LOCATIONS_FILE)
 
 
-def get_servers() -> dict:
+def get_servers(filter: str = None) -> dict:
 
     return read_toml(SERVERS_FILE)
 
@@ -51,18 +51,18 @@ def get_locations_list() -> list:
     return list(get_locations().keys())
 
 
-def get_client_ips() -> dict:
+def get_client_ips(location: str, server_group: str) -> list:
 
     try:
         _ = read_toml(CLIENT_IPS_FILE)
-        if _:
-            return _
+        if location := _.get(location):
+            return location.get(server_group, [])
     except Exception as e:
         raise e
 
-    return {}
+    return []
 
 
-def get_status_codes() -> list:
-
-    return read_toml(STATUS_CODES_FILE).keys()
+#def get_status_codes() -> list:
+#
+#    return read_toml(STATUS_CODES_FILE).keys()

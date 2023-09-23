@@ -1,8 +1,7 @@
 flask
 gunicorn
-#quart
-#hypercorn
 gcloud-aio-storage
+pyyaml
 tomli
 tomli_w
-#pyyaml
+boto3

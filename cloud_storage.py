@@ -2,7 +2,7 @@ from asyncio import gather
 from os import path
 from gcloud.aio.auth import Token
 from gcloud.aio.storage import Storage
-#from boto3 import Session
+from boto3 import Session
 from io import BytesIO
 from datetime import datetime
 
@@ -25,6 +25,10 @@ def authenticate_to_gcs(service_file: str = None):
 
 
 async def get_objects_list(bucket_name: str, prefix: str = "", bucket_type: str = 'gcs', auth_file: str = None) -> list:
+
+    """
+    Given a GCS bucket and prefix, return a list of all non-zero byte objects
+    """
 
     objects = []
 
@@ -54,7 +58,11 @@ async def get_objects_list(bucket_name: str, prefix: str = "", bucket_type: str 
     return objects
 
 
-async def read_files_from_bucket(bucket_name: str, file_names: list, bucket_type: str = 'gcs', auth_file: str = None) -> str:
+async def read_files_from_bucket(bucket_name: str, file_names: list, bucket_type: str = 'gcs', auth_file: str = None) -> list:
+
+    """
+    Given a GCS bucket name and list of files, return the contents of the files
+    """
 
     try:
 
@@ -77,7 +85,7 @@ async def read_files_from_bucket(bucket_name: str, file_names: list, bucket_type
             fh.seek(0)
             return fh.getvalue()
 
-        return ""
+        return [""]
 
     except Exception as e:
         raise e

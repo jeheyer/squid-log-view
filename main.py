@@ -87,7 +87,10 @@ def get_data(env_vars: dict = {}) -> dict:
     now = time()
     # Parse parameters to determine time range
     interval = int(env_vars.get('interval', settings['DEFAULT_VALUES'].get('interval', 900)))
-    end_time = int(env_vars.get('end_time', floor(now)))
+    if env_vars.get('end_time', "") != "":
+        end_time = int(env_vars['end_time'])
+    else:
+        end_time = floor(now)
     start_time = int(env_vars.get('start_time', end_time - interval))
     time_range = (start_time, end_time)
 
@@ -106,11 +109,16 @@ def get_data(env_vars: dict = {}) -> dict:
         bucket_type = locations[location]['bucket_type']
         file_path = locations[location]['file_path']
         auth_file = locations[location]['auth_file']
-        server = env_vars.get('server')
+        server_group = env_vars.get('server_group')
         servers = {location: []}
+        #server = env_vars.get('server')
+        #servers = {location: []}
 
     # Get servers for each location
-    servers_cache = read_toml(SERVERS_FILE)
+    try:
+        servers_cache = read_toml(SERVERS_FILE)
+    except Exception as e:
+        return e
 
     splits['get_servers'] = time()
 
@@ -132,8 +140,8 @@ def get_data(env_vars: dict = {}) -> dict:
 
         server_name = o['name'].split('/')[-1].replace('.log', '')
         match = True
-        if server and server != "":
-            if server_name != server:
+        if server_group and server_group != "" and server_group != "all":
+            if not server_group in server_name:
                 match = False
         if match:
             servers[location].append(server_name)
@@ -144,8 +152,8 @@ def get_data(env_vars: dict = {}) -> dict:
         save_toml(SERVERS_FILE, servers)
         return list(servers[location])
 
-    if not server or server == "":
-        save_toml(SERVERS_FILE, servers)
+    #if not server or server == "":
+    #    save_toml(SERVERS_FILE, servers)
 
     splits['save_servers'] = time()
 
@@ -214,12 +222,15 @@ def get_data(env_vars: dict = {}) -> dict:
     entries = [dict(zip(log_fields, entry)) for entry in entries]
     splits['zip_entries'] = time()
 
-    save_toml(STATUS_CODES_FILE, request_counts['status_code'])
-    splits['save_status_codes'] = time()
+    #save_toml(STATUS_CODES_FILE, request_counts['status_code'])
+    #splits['save_status_codes'] = time()
 
-    if location:
+    if location and server_group:
         client_ips = read_toml(CLIENT_IPS_FILE)
-        client_ips[location] = list(request_counts['client_ip'].keys())
+        if not location in client_ips:
+            client_ips[location] = {}
+        #client_ips[location][server_group] = get_client_ips(location, server_group)
+        client_ips[location][server_group] = list(request_counts['client_ip'].keys())
         save_toml(CLIENT_IPS_FILE, client_ips)
 
     splits['save_client_ips'] = time()
@@ -245,5 +256,5 @@ def get_data(env_vars: dict = {}) -> dict:
         'bytes_by_client_ip': byte_counts['client_ip'],
         'durations': durations,
         'time_range': time_range,
-        'num_servers': len(servers[location]),
+        #'num_servers': len(servers[location]),
     }
