@@ -11,6 +11,7 @@ PLAIN_TEXT_CONTENT_TYPE = "text/plain"
 
 app = Flask(__name__, static_url_path='/static')
 app.config['JSON_SORT_KEYS'] = False
+app.config['SESSION_COOKIE_SAMESITE'] = "Strict"
 app.secret_key = str(randint(0, 1000000))
 
 
@@ -30,27 +31,31 @@ def _top():
         intervals = settings.get('INTERVALS')
         locations = get_locations()
         defaults = settings['DEFAULT_VALUES']
-        interval = str(defaults.get('interval', 900))
+
+        values = {}
+        for field_name in ['location', 'server_group', 'interval', 'status_code']:
+            # If value specified in query string, use that
+            if field_value := request.args.get(field_name):
+                if session.get(field_name) != field_value:
+                    session[field_name] = field_value  # Set or update cookie
+            else:
+                # Try to fetch from cookie, if not, use defaults
+                if not(field_value := session.get(field_name)):
+                    field_value = str(defaults.get(field_name, ""))
+            values[field_name] = field_value
 
         server_groups = []
-        server_group = None
         client_ips = []
-        if location := request.args.get('location', session.get('location')):
-            session['location'] = location
-            if server_group := request.args.get('server_group'):
-                session['server_group'] = server_group
-            else:
-                server_group = session.get('server_group')
-        else:
-            location = defaults.get('location')
-        if location:
+        if location := values.get('location'):
             server_groups = locations[location].get('server_groups', DEFAULT_SERVER_GROUPS)
-            if server_group:
+            if server_group := values.get('server_group'):
                 client_ips = get_client_ips(location, server_group)
+
         status_codes = settings.get('DEFAULT_VALUES', {}).get('STATUS_CODES', DEFAULT_STATUS_CODES)
-        return render_template(request.path, locations=locations, interval=interval, location=location,
-                               server_groups=server_groups, server_group=server_group, client_ips=client_ips,
-                               status_codes=status_codes, intervals=intervals)
+
+        return render_template(request.path, locations=locations, interval=values['interval'], location=location,
+                               server_groups=server_groups, server_group=values['server_group'], client_ips=client_ips,
+                               status_codes=status_codes, intervals=intervals, status_code=values['status_code'])
     except Exception as e:
         return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 

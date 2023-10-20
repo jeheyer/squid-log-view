@@ -135,8 +135,8 @@ def get_data(env_vars: dict = {}) -> dict:
 
     for o in objects:
 
-        if o['updated'] < start_time:
-            continue  # ignore this object, since the modified time was earlier than start time
+        if o['updated'] < start_time or 'squid_parse_output' in o['name']:
+            continue
 
         server_name = o['name'].split('/')[-1].replace('.log', '')
         match = True
