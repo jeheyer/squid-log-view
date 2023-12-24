@@ -1,4 +1,4 @@
-FROM python:3.11-slim-bullseye
+FROM python:3.11-alpine
 ENV PORT=8080
 ENV APP_DIR=/opt
 ENV APP_APP=wsgi:app
