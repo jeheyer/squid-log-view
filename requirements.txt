@@ -1,7 +1,6 @@
-flask
-gunicorn
 gcloud-aio-storage
-pyyaml
+quart
+hypercorn
 tomli
 tomli_w
-boto3
+guppy3
