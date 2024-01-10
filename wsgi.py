@@ -1,6 +1,7 @@
-from quart import Quart, request, jsonify, render_template, Response, session
+from flask import Flask, request, jsonify, render_template, Response, session
 from traceback import format_exc
 from random import randint
+from asyncio import run
 from main import *
 
 DEFAULT_RESPONSE_HEADERS = {'Cache-Control': "no-cache, no-store"}
@@ -9,7 +10,7 @@ DEFAULT_STATUS_CODES = ["200", "400", "301", "403", "302", "500", "502", "503"]
 PLAIN_TEXT_CONTENT_TYPE = "text/plain"
 
 
-app = Quart(__name__, static_url_path='/static')
+app = Flask(__name__, static_url_path='/static')
 app.config['JSON_SORT_KEYS'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = "Strict"
 app.secret_key = str(randint(0, 1000000))
@@ -17,15 +18,15 @@ app.secret_key = str(randint(0, 1000000))
 
 @app.route("/")
 @app.route("/index.html")
-async def _root():
+def _root():
     try:
-        return await render_template('index.html')
+        return render_template('index.html')
     except Exception as e:
-        return await Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 @app.route("/top.html")
-async def _top():
+def _top():
     try:
         settings = get_settings()
         intervals = settings.get('INTERVALS')
@@ -53,15 +54,15 @@ async def _top():
 
         status_codes = settings.get('DEFAULT_VALUES', {}).get('STATUS_CODES', DEFAULT_STATUS_CODES)
 
-        return await render_template(request.path, locations=locations, interval=values['interval'], location=location,
-            server_groups=server_groups, server_group=values['server_group'], client_ips=client_ips,
-            status_codes=status_codes, intervals=intervals, status_code=values['status_code'])
+        return render_template(request.path, locations=locations, interval=values['interval'], location=location,
+                               server_groups=server_groups, server_group=values['server_group'], client_ips=client_ips,
+                               status_codes=status_codes, intervals=intervals, status_code=values['status_code'])
     except Exception as e:
         return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 @app.route("/middle.html")
-async def _middle():
+def _middle():
     try:
         settings = get_settings()
         if server_group := request.args.get('server_group'):
@@ -70,8 +71,8 @@ async def _middle():
             server_group = session.get('server_group')
         client_ip = request.args.get('client_ip')
         field_names = settings.get('LOG_FIELDS')
-        data = await get_data(request.args) if request.args.get('location') else dict(entries=[])
-        return await render_template(request.path, server_group=server_group, data=data,
+        data = run(get_data(request.args)) if 'location' in request.args else dict(entries=[])
+        return render_template(request.path, server_group=server_group, data=data,
                                num_entries=len(data['entries']),
                                fields=field_names, client_ip=client_ip, env_vars=request.args)
     except Exception as e:
@@ -79,24 +80,23 @@ async def _middle():
 
 
 @app.route("/bottom.html")
-async def _bottom():
+def _bottom():
     try:
-        return await render_template(request.path, locations=get_locations())
+        return render_template(request.path, locations=get_locations())
     except Exception as e:
         return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 @app.route("/get_data")
-async def _get_data():
+def _get_data():
     try:
         settings = get_settings()
         response_headers = settings.get('RESPONSE_HEADERS', DEFAULT_RESPONSE_HEADERS)
-        data = await get_data(request.args) if request.args.get('location') else dict(entries=[])
+        data = run(get_data(request.args)) if request.args.get('location') else dict(entries=[])
         return jsonify(data), response_headers
     except Exception as e:
         return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 if __name__ == '__main__':
-
-    app.run(debug=True)
+    app.run()
