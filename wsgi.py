@@ -19,6 +19,7 @@ app.secret_key = str(randint(0, 1000000))
 @app.route("/")
 @app.route("/index.html")
 def _root():
+
     try:
         return render_template('index.html')
     except Exception as e:
@@ -27,6 +28,7 @@ def _root():
 
 @app.route("/top.html")
 def _top():
+
     try:
         settings = get_settings()
         intervals = settings.get('INTERVALS')
@@ -63,6 +65,7 @@ def _top():
 
 @app.route("/middle.html")
 def _middle():
+
     try:
         settings = get_settings()
         if server_group := request.args.get('server_group'):
@@ -81,6 +84,7 @@ def _middle():
 
 @app.route("/bottom.html")
 def _bottom():
+
     try:
         return render_template(request.path, locations=get_locations())
     except Exception as e:
@@ -89,6 +93,7 @@ def _bottom():
 
 @app.route("/get_data")
 def _get_data():
+
     try:
         settings = get_settings()
         response_headers = settings.get('RESPONSE_HEADERS', DEFAULT_RESPONSE_HEADERS)
@@ -99,4 +104,5 @@ def _get_data():
 
 
 if __name__ == '__main__':
-    app.run()
+
+    app.run(debug=True)

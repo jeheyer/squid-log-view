@@ -2,22 +2,27 @@ from asyncio import run, gather
 from collections import deque, Counter
 from time import time
 from math import floor
-from os import path
+from os import path, environ
 from tomli import load
 from tomli_w import dump
+from platform import system
 from gcloud.aio.auth import Token
 from gcloud.aio.storage import Storage
+from google.auth import default
+from google.auth.transport.requests import Request
+
 from datetime import datetime
 
-FILTER_FIELD_NAMES: tuple = ('client_ip', 'code', 'url')
-DEFAULT_FILTER: dict = {}
-UNITS: tuple = ("KB", "MB", "GB", "TB", "PB")
+FILTER_FIELD_NAMES = ('client_ip', 'code', 'url')
+DEFAULT_FILTER = {}
+UNITS = ("KB", "MB", "GB", "TB", "PB")
 STORAGE_TIMEOUT = 60
 SETTINGS_FILE = 'settings.toml'
 LOCATIONS_FILE = 'locations.toml'
 SERVERS_FILE = 'servers.toml'
 CLIENT_IPS_FILE = 'client_ips.toml'
 STATUS_CODES_FILE = 'status_codes.toml'
+SCOPES = ["https://www.googleapis.com/auth/cloud-platform.read-only"]
 
 
 def read_toml(file_name: str) -> dict:
@@ -69,7 +74,7 @@ def get_client_ips(location: str, server_group: str) -> list:
     return []
 
 
-def object_is_current(obj: dict, time_range) -> bool:
+def object_is_current(obj: dict, min_timestamp: int = 0) -> bool:
 
     """
     Given a GCS object, return true if size is positive number and updated timestamp is higher than threshold
@@ -78,11 +83,13 @@ def object_is_current(obj: dict, time_range) -> bool:
     if int(obj.get('size', 0)) == 0:
         return False    # Ignore empty files
 
+    timestamp_format = "%Y-%m-%d%H:%M:%S"
+
     if updated := obj.get('updated'):
         updated_ymd = updated[:10]
         updated_hms = updated[11:19]
-        updated_timestamp = int(datetime.timestamp(datetime.strptime(updated_ymd + updated_hms, "%Y-%m-%d%H:%M:%S")))
-        if updated_timestamp > time_range[0]:
+        updated_timestamp = int(datetime.timestamp(datetime.strptime(updated_ymd + updated_hms, timestamp_format)))
+        if updated_timestamp > min_timestamp:
             return True
 
     return False
@@ -110,15 +117,17 @@ async def list_storage_objects(bucket_name: str, token: Token, prefix: str = "",
     except Exception as e:
         raise e
 
-    return tuple([o for o in objects if object_is_current(o, time_range)])
+    return tuple([o for o in objects if object_is_current(o, time_range[0])])
 
 
-async def get_storage_objects(bucket_name: str, token: Token, file_names: list = []) -> tuple:
+async def get_storage_objects(bucket_name: str, token: Token, file_names: list = None) -> tuple:
 
     """
     Given a GCS bucket name and list of files, return the contents of the files
     """
 
+    if file_names is None:
+        file_names = []
     try:
         async with Storage(token=token) as storage:
             tasks = (storage.download(bucket_name, file_name, timeout=STORAGE_TIMEOUT) for file_name in file_names)
@@ -127,17 +136,20 @@ async def get_storage_objects(bucket_name: str, token: Token, file_names: list =
         return blobs
     except Exception as e:
         raise e
-        return tuple("")
 
 
-async def process_log(blob: str, time_range: tuple, filter: dict = {}, log_fields={}) -> deque():
+async def process_log(blob: str, time_range: tuple, log_filter:dict = None, log_fields: dict = None) -> list[dict]:
 
-    matches = deque()
+    if log_fields is None:
+        log_fields = {}
+    if log_filter is None:
+        log_filter = {}
+
+    matches = []
 
     try:
 
-        if filter:
-            filter_indexes = {int(i): field_name for i, field_name in log_fields.items() if field_name in filter}
+        filter_indexes = {int(i): field_name for i, field_name in log_fields.items() if field_name in log_filter}
 
         lines = deque(blob.decode('utf-8').splitlines())
         while len(lines) > 0:
@@ -154,25 +166,13 @@ async def process_log(blob: str, time_range: tuple, filter: dict = {}, log_field
                 continue  # haven't read enough
             if timestamp < time_range[0]:
                 break  # read too far
-            """
-            if entry[6].startswith("http:"):
-                # Remove full URL from HTTP requests
-                host = entry[6][7:].split('/')[0]
-                if ":" in host:
-                    entry[6] = host
-                else:
-                    entry[6] = host + ":80"
-            """
-            match = False
-            if filter:
-                for i, field_name in filter_indexes.items():
-                    match = True if filter.get(field_name) in _[i] else False
-            else:
-                match = True
+            match = False if log_filter else True
+            for i, field_name in filter_indexes.items():
+                match = True if log_filter.get(field_name) in _[i] else False
             if match:
                 time_str = str(datetime.fromtimestamp(timestamp))
                 if elapsed := int(_[1]):
-                    unit = "s";
+                    unit = "s"
                     if elapsed < 1000:
                         unit = "ms"
                     else:
@@ -222,7 +222,7 @@ async def process_log(blob: str, time_range: tuple, filter: dict = {}, log_field
     return matches
 
 
-async def get_data(env_vars: dict = {}) -> dict:
+async def get_data(env_vars: dict = None) -> dict:
 
     splits = {'start': time()}
 
@@ -263,16 +263,13 @@ async def get_data(env_vars: dict = {}) -> dict:
         'code': env_vars.get('status_code', ""),
         'client_ip': env_vars.get('client_ip', ""),
     }
-    #for f in FILTER_FIELD_NAMES:
-    #    if f in env_vars and env_vars[f] != "":
-    #        filter[f] = env_vars[f]
 
     # Populate hosts
     if location := env_vars.get('location'):
-        bucket_name = locations[location]['bucket_name']
-        bucket_type = locations[location]['bucket_type']
-        file_path = locations[location]['file_path']
-        auth_file = locations[location]['auth_file']
+        bucket_name = locations[location].get('bucket_name')
+        bucket_type = locations[location].get('bucket_type')
+        file_path = locations[location].get('file_path')
+        auth_file = locations[location].get('auth_file')
         server_group = env_vars.get('server_group')
         servers = {location: []}
 
@@ -285,9 +282,20 @@ async def get_data(env_vars: dict = {}) -> dict:
     splits['get_servers'] = time()
 
     try:
-        pwd = path.realpath(path.dirname(__file__))
-        service_file = path.join(pwd, auth_file)
-        token = Token(service_file=service_file, scopes=["https://www.googleapis.com/auth/cloud-platform.read-only"])
+        token = None
+        credentials = None
+        if auth_file:
+            pwd = path.realpath(path.dirname(__file__))
+            if system().lower().startswith("win"):
+                auth_file = auth_file.replace("/", "\\")
+            service_file = path.join(pwd, auth_file)
+            token = Token(service_file=service_file, scopes=SCOPES)
+        else:
+            service_file = environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+            credentials, project_id = default(scopes=SCOPES)
+            _ = Request()
+            credentials.refresh(_)
+            token = credentials.token
     except Exception as e:
         raise e
     splits['get_token'] = time()
@@ -299,7 +307,7 @@ async def get_data(env_vars: dict = {}) -> dict:
 
     # Populate list of files to read from bucket
     file_names = {}
-
+    #print(len(objects))
     for o in objects:
         if 'squid_parse_output' in o['name']:
             continue
@@ -321,6 +329,7 @@ async def get_data(env_vars: dict = {}) -> dict:
 
     # Read the objects from the bucket
     blobs = await get_storage_objects(bucket_name, token, file_names.values())
+    #print(len(blobs))
     splits['read_objects'] = time()
 
     byte_counts = {k: {} for k in ['server', 'client_ip', 'domain']}
@@ -328,9 +337,12 @@ async def get_data(env_vars: dict = {}) -> dict:
     entries = deque()
     for i, server in enumerate(file_names.keys()):
         matches = await process_log(blobs[i], time_range, filter, log_fields)
+        # Inject the server name as a new field
+        #print(server)
+        #matches = [match.update({'server': server}) for match in matches]
+        entries.extend(matches)
         request_counts['server'].update({server: len(matches)})
         byte_counts['server'].update({server: 69})
-        entries.extend(matches)
     del blobs
     splits['process_objects'] = time()
 

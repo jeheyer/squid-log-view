@@ -11,5 +11,5 @@ COPY *.py $APP_DIR/
 COPY settings.toml $APP_DIR/
 COPY locations.toml $APP_DIR/
 COPY *.json $APP_DIR/
-ENTRYPOINT cd $APP_DIR && hypercorn -b 0.0.0.0:$PORT -w 1 --access-logfile '-' app:app
+ENTRYPOINT cd $APP_DIR && gunicorn -b 0.0.0.0:$PORT -w 1 --access-logfile '-' wsgi:app
 EXPOSE $PORT
