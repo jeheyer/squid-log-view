@@ -1,5 +1,5 @@
 service: squid-log-view
-runtime: python310
+runtime: python311
 env: standard
-entrypoint: hypercorn -b 0.0.0.0:$PORT -w 1 app:app
+entrypoint: gunicorn -b 0.0.0.0:$PORT -w 1 wsgi:app
 instance_class: F4

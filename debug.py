@@ -5,8 +5,8 @@ from time import time
 from random import sample
 from math import floor
 from guppy import hpy
+from main import get_locations, get_data
 from asyncio import run
-from main import *
 
 
 async def main():
@@ -29,4 +29,6 @@ async def main():
 if __name__ == '__main__':
 
     run(main())
+
+
 

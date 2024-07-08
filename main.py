@@ -1,11 +1,11 @@
-from asyncio import run, gather
 from collections import deque, Counter
 from time import time
 from math import floor
-from os import path, environ
+from os import path
 from tomli import load
 from tomli_w import dump
 from platform import system
+from asyncio import run, gather
 from gcloud.aio.auth import Token
 from gcloud.aio.storage import Storage
 from google.auth import default
@@ -13,6 +13,7 @@ from google.auth.transport.requests import Request
 
 from datetime import datetime
 
+LOG_FIELD_NAMES = ("timestamp", "elapsed", "client_ip", "code", "bytes", "method", "url", "rfc931", "how", "type")
 FILTER_FIELD_NAMES = ('client_ip', 'code', 'url')
 DEFAULT_FILTER = {}
 UNITS = ("KB", "MB", "GB", "TB", "PB")
@@ -138,86 +139,82 @@ async def get_storage_objects(bucket_name: str, token: Token, file_names: list =
         raise e
 
 
-async def process_log(blob: str, time_range: tuple, log_filter:dict = None, log_fields: dict = None) -> list[dict]:
-
-    if log_fields is None:
-        log_fields = {}
-    if log_filter is None:
-        log_filter = {}
+async def process_log(blob: bytes, time_range: tuple, log_filter: dict = None, log_fields: dict = None) -> list[dict]:
 
     matches = []
 
-    try:
+    lines = deque(blob.decode('utf-8').rstrip().splitlines())
+    del blob
 
-        filter_indexes = {int(i): field_name for i, field_name in log_fields.items() if field_name in log_filter}
+    while len(lines) > 0:
 
-        lines = deque(blob.decode('utf-8').splitlines())
-        while len(lines) > 0:
-            # Work backwards on file, since newer entries are at the end
-            line = lines.pop()
-            _ = tuple(line.split())
-            if len(_) < len(log_fields):
-                continue
-            if _[3] == "NONE/000":
-                continue
+        # Work backwards on file, since newer entries are at the end
+        line = tuple(lines.pop().split())
+        entry = dict(zip(log_fields.values(), line))
 
-            timestamp = int(_[0][0:10])
-            if timestamp > time_range[1]:
-                continue  # haven't read enough
-            if timestamp < time_range[0]:
-                break  # read too far
-            match = False if log_filter else True
-            for i, field_name in filter_indexes.items():
-                match = True if log_filter.get(field_name) in _[i] else False
-            if match:
-                time_str = str(datetime.fromtimestamp(timestamp))
-                if elapsed := int(_[1]):
-                    unit = "s"
-                    if elapsed < 1000:
-                        unit = "ms"
-                    else:
-                        elapsed = elapsed / 1000
-                        if elapsed > 60:
-                            elapsed = round(elapsed)
-                    elapsed_str = f"{elapsed} {unit}"
-                else:
-                    elapsed_str = "unknown"
-                if size := int(_[4]):
-                    unit = "Bytes"
-                    if size >= 1000:
-                        for i, unit in enumerate(UNITS):
-                            size = round(size / 1000, 3)
-                            unit = UNITS[i]
-                            if size < 1000:
-                                break
-                    size_str = f"{size} {unit}"
-                else:
-                    size_str = "unknown"
-                if url := _[6]:
-                    if url.startswith("http:"):
-                        # Remove full URL from HTTP requests
-                        host = url[7:].split('/')[0]
-                        host = host if ":" in host else f"{host}:80"
-                    else:
-                        host = url
-                else:
-                    host = "unknownhost.unknowndomain"
-                matches.append({
-                    'timestamp': time_str,
-                    'elapsed': elapsed_str,
-                    'client_ip': _[2],
-                    'code': _[3],
-                    'bytes': _[4],
-                    'size': size_str,
-                    'method': _[5],
-                    'host': host,
-                    'rfc931': _[7],
-                    'how': _[8],
-                    'type': _[9],
-                })
+        if len(line) < len(log_fields):
+             continue
+        if entry['code'] == "NONE/000":
+            continue
 
-    except Exception as e:
-        raise e
+        # Check if timestamp is within search range
+        timestamp = int(entry.get('timestamp')[0:10])
+        if timestamp >= time_range[1]:
+            continue  # haven't read enough
+        if timestamp <= time_range[0]:
+            break  # read too far
+
+        match = True
+        if log_filter:
+            match = False
+            for k, v in log_filter.items():
+                if v in entry.get(k):
+                    match = True
+                    break
+        if not match:
+            continue
+
+        time_str = str(datetime.fromtimestamp(timestamp))
+        entry.update({'timestamp': time_str})
+
+        if elapsed := int(entry['elapsed']):
+            unit = "s"
+            if elapsed < 1000:
+                unit = "ms"
+            else:
+                elapsed = elapsed / 1000
+                if elapsed > 60:
+                    elapsed = round(elapsed)
+            elapsed_str = f"{elapsed} {unit}"
+        else:
+            elapsed_str = "unknown"
+        entry.update({'elapsed': elapsed_str})
+
+        if size := int(entry['bytes']):
+            unit = "Bytes"
+            if size >= 1000:
+                for i, unit in enumerate(UNITS):
+                    size = round(size / 1000, 3)
+                    unit = UNITS[i]
+                    if size < 1000:
+                        break
+            size_str = f"{size} {unit}"
+        else:
+            size_str = "unknown"
+        entry.update({'size': size_str})
+
+        if url := entry['url']:
+            if url.startswith("http:"):
+                # Remove full URL from HTTP requests
+                host = url[7:].split('/')[0]
+                host = host if ":" in host else f"{host}:80"
+            else:
+                host = url
+        else:
+            host = "unknownhost.unknowndomain"
+        entry.update({'host': host})
+
+        matches.append(entry)
 
     return matches
 
@@ -228,25 +225,23 @@ async def get_data(env_vars: dict = None) -> dict:
 
     settings = get_settings()
     assert settings, "Could not load settings.  Does {} exist?".format(SETTINGS_FILE)
-    log_fields = settings.get('LOG_FIELDS')
+    if not (log_fields := settings.get('LOG_FIELDS')):
+        log_fields = dict(enumerate(LOG_FIELD_NAMES))
     splits['get_settings'] = time()
 
-    try:
-        locations = get_locations()
-    except Exception as e:
-        raise e
+    locations = get_locations()
     assert locations, "Could not load locations.  Does {} exist?".format(LOCATIONS_FILE)
     splits['get_locations'] = time()
 
-    # Process parameters
-    location = env_vars.get('location')
-    action = env_vars.get('action')
-    if action == "get_locations":
-        return list(locations.keys())
-    if action == "get_servers":
-        servers = get_servers()
-        if location in servers:
-            return list(servers[location])
+    #action = env_vars.get('action')
+    #if action == "get_locations":
+    #    return {'locations': locations.keys()}
+
+    #location = env_vars.get('location')
+    #if action == "get_servers":
+    #    servers = get_servers()
+    #    if location in servers:
+    #        return {'servers': locations.keys()}
 
     now = time()
     # Parse parameters to determine time range
@@ -261,7 +256,7 @@ async def get_data(env_vars: dict = None) -> dict:
     # Parse parameters to determine filter
     filter = {
         'code': env_vars.get('status_code', ""),
-        'client_ip': env_vars.get('client_ip', ""),
+        #'client_ip': env_vars.get('client_ip', ""),
     }
 
     # Populate hosts
@@ -272,6 +267,8 @@ async def get_data(env_vars: dict = None) -> dict:
         auth_file = locations[location].get('auth_file')
         server_group = env_vars.get('server_group')
         servers = {location: []}
+    else:
+        quit()
 
     # Get servers for each location
     try:
@@ -288,10 +285,10 @@ async def get_data(env_vars: dict = None) -> dict:
             pwd = path.realpath(path.dirname(__file__))
             if system().lower().startswith("win"):
                 auth_file = auth_file.replace("/", "\\")
-            service_file = path.join(pwd, auth_file)
-            token = Token(service_file=service_file, scopes=SCOPES)
+            _ = path.join(pwd, auth_file)
+            token = Token(service_file=str(_), scopes=SCOPES)
         else:
-            service_file = environ.get('GOOGLE_APPLICATION_CREDENTIALS')
+            #service_file = environ.get('GOOGLE_APPLICATION_CREDENTIALS')
             credentials, project_id = default(scopes=SCOPES)
             _ = Request()
             credentials.refresh(_)
@@ -307,14 +304,13 @@ async def get_data(env_vars: dict = None) -> dict:
 
     # Populate list of files to read from bucket
     file_names = {}
-    #print(len(objects))
     for o in objects:
         if 'squid_parse_output' in o['name']:
             continue
         server_name = o['name'].split('/')[-1].replace('.log', '')
         match = True
         if server_group and server_group != "" and server_group != "all":
-            if not server_group in server_name:
+            if server_group not in server_name:
                 match = False
         if match:
             servers[location].append(server_name)
@@ -322,14 +318,13 @@ async def get_data(env_vars: dict = None) -> dict:
             request_counts['server'].update({server_name: 0})
     splits['filter_objects'] = time()
 
-    if action == "get_servers":
-        save_toml(SERVERS_FILE, servers)
-        return list(servers[location])
-    splits['save_servers'] = time()
+    #if action == "get_servers":
+    #    save_toml(SERVERS_FILE, servers)
+    #    return list(servers[location])
+    #splits['save_servers'] = time()
 
     # Read the objects from the bucket
-    blobs = await get_storage_objects(bucket_name, token, file_names.values())
-    #print(len(blobs))
+    blobs = await get_storage_objects(bucket_name, token, list(file_names.values()))
     splits['read_objects'] = time()
 
     byte_counts = {k: {} for k in ['server', 'client_ip', 'domain']}
@@ -348,7 +343,8 @@ async def get_data(env_vars: dict = None) -> dict:
 
     # Perform Total Counts
     for field in ['client_ip', 'code', 'method']:
-        request_counts.update({field: Counter([_[field] for _ in entries])})
+        request_counts.update({field: Counter([_.get(field) for _ in entries])})
+
     request_counts.update({
         'domain': Counter([_['host'][7:].split("/")[0] if _['host'].startswith("http:") else _['host'] for _ in entries]),
         'how':  Counter([_['how'].split("/")[0] for _ in entries]),
@@ -365,7 +361,7 @@ async def get_data(env_vars: dict = None) -> dict:
 
     if location and server_group:
         client_ips = read_toml(CLIENT_IPS_FILE)
-        if not location in client_ips:
+        if location not in client_ips:
             client_ips[location] = {}
         client_ips[location][server_group] = list(request_counts['client_ip'].keys())
         save_toml(CLIENT_IPS_FILE, client_ips)
