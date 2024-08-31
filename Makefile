@@ -1,5 +1,6 @@
 SERVICE_NAME := squid-log-view
-CLOUD_RUN_REGION := us-central1
+RUNTIME := python311
+REGION := us-central1
 
 include Makefile.env
 
@@ -8,10 +9,13 @@ all: gcp-setup cloud-build cloud-run-deploy
 gcp-setup:
 	gcloud config set project $(GCP_PROJECT_ID)
 
-cloud-build:
-	gcloud builds submit --tag gcr.io/$(GCP_PROJECT_ID)/$(SERVICE_NAME) .
+cloud-function:
+	gcloud config set functions/region $(REGION)
+	gcloud functions deploy $(SERVICE_NAME) --runtime=$(RUNTIME)  --region=$(REGION) \
+	--gen2 --source=. --entry-point=hello_get --trigger-http --allow-unauthenticated
 
-cloud-run-deploy:
-	gcloud config set run/region $(CLOUD_RUN_REGION)
+cloud-run:
+	gcloud config set run/region $(REGION)
+	gcloud builds submit --tag gcr.io/$(GCP_PROJECT_ID)/$(SERVICE_NAME) .
 	gcloud run deploy $(SERVICE_NAME) --image gcr.io/$(GCP_PROJECT_ID)/$(SERVICE_NAME) --allow-unauthenticated
 

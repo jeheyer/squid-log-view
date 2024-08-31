@@ -1,23 +1,23 @@
+import os
+import pathlib
+import tomli
+import tomli_w
+import asyncio
 from collections import deque, Counter
+from datetime import datetime
 from time import time
 from math import floor
-from os import path
-from tomli import load
-from tomli_w import dump
-from platform import system
-from asyncio import run, gather
+from sys import getsizeof
 from gcloud.aio.auth import Token
 from gcloud.aio.storage import Storage
 from google.auth import default
 from google.auth.transport.requests import Request
 
-from datetime import datetime
-
 LOG_FIELD_NAMES = ("timestamp", "elapsed", "client_ip", "code", "bytes", "method", "url", "rfc931", "how", "type")
 FILTER_FIELD_NAMES = ('client_ip', 'code', 'url')
 DEFAULT_FILTER = {}
 UNITS = ("KB", "MB", "GB", "TB", "PB")
-STORAGE_TIMEOUT = 60
+STORAGE_TIMEOUT = 55
 SETTINGS_FILE = 'settings.toml'
 LOCATIONS_FILE = 'locations.toml'
 SERVERS_FILE = 'servers.toml'
@@ -26,24 +26,40 @@ STATUS_CODES_FILE = 'status_codes.toml'
 SCOPES = ["https://www.googleapis.com/auth/cloud-platform.read-only"]
 
 
+def get_full_path(file_name: str) -> str:
+
+    pwd = os.path.realpath(os.path.dirname(__file__))
+    full_path = os.path.join(pwd, file_name)
+    _ = pathlib.Path(full_path)
+    if not _.is_file():
+        raise FileNotFoundError(f"File '{full_path}' does not exist!")
+    if not _.stat().st_size > 0:
+        raise FileExistsError(f"File '{full_path}' is empty!")
+    return full_path
+
+
 def read_toml(file_name: str) -> dict:
 
     try:
-        pwd = path.realpath(path.dirname(__file__))
-        if path.isfile(locations_file := path.join(pwd, file_name)):
-            fp = open(locations_file, mode="rb")
-            return load(fp)
-        else:
-            return {}
+        if _ := get_full_path(file_name):
+            fp = open(_, mode="rb")
+            _ = tomli.load(fp)
+            fp.close()
+            return _
+    except FileNotFoundError:
+        return {}
     except Exception as e:
         raise e
 
 
-def save_toml(file_name: str, data: dict):
+def write_toml(file_name: str, data: dict):
 
     try:
-        with open(file_name, mode="wb") as fp:
-            dump(data, fp)
+        _ = get_full_path(file_name)
+        fp = open(_, mode="wb")
+        tomli_w.dump(data, fp)
+        fp.close()
+        return
     except Exception as e:
         raise e
 
@@ -65,13 +81,9 @@ def get_servers(filter: str = None) -> dict:
 
 def get_client_ips(location: str, server_group: str) -> list:
 
-    try:
-        _ = read_toml(CLIENT_IPS_FILE)
-        if location := _.get(location):
-            return location.get(server_group, [])
-    except Exception as e:
-        raise e
-
+    _ = read_toml(CLIENT_IPS_FILE)
+    if location := _.get(location):
+        return location.get(server_group, [])
     return []
 
 
@@ -96,20 +108,21 @@ def object_is_current(obj: dict, min_timestamp: int = 0) -> bool:
     return False
 
 
-async def list_storage_objects(bucket_name: str, token: Token, prefix: str = "", time_range: tuple = None) -> tuple:
+async def list_storage_objects(bucket: str, token: Token, prefix: str = "", time_range: tuple = None) -> list:
 
     """
     Given a GCS bucket and prefix, return all non-zero byte objects within the specified time range
     """
 
-    time_range = time_range if time_range and len(time_range) == 2 else (0, time())
+    default_time_range = (0, time())
+    time_range = time_range if time_range and len(time_range) == 2 else default_time_range
     params = {'prefix': prefix}
     objects = []
 
     try:
         async with Storage(token=token) as storage:
             while True:
-                _ = await storage.list_objects(bucket_name, params=params, timeout=STORAGE_TIMEOUT)
+                _ = await storage.list_objects(bucket, params=params, timeout=STORAGE_TIMEOUT)
                 objects.extend(_.get('items', []))
                 if next_page_token := _.get('nextPageToken'):
                     params.update({'pageToken': next_page_token})
@@ -118,30 +131,30 @@ async def list_storage_objects(bucket_name: str, token: Token, prefix: str = "",
     except Exception as e:
         raise e
 
-    return tuple([o for o in objects if object_is_current(o, time_range[0])])
+    return [o for o in objects if object_is_current(o, time_range[0])]
 
 
-async def get_storage_objects(bucket_name: str, token: Token, file_names: list = None) -> tuple:
+async def get_storage_objects(bucket: str, token: Token, objects: list = None) -> deque:
 
     """
     Given a GCS bucket name and list of files, return the contents of the files
     """
 
-    if file_names is None:
+    if objects is None:
         file_names = []
     try:
         async with Storage(token=token) as storage:
-            tasks = (storage.download(bucket_name, file_name, timeout=STORAGE_TIMEOUT) for file_name in file_names)
-            blobs = tuple(await gather(*tasks))
+            tasks = (storage.download(bucket, o, timeout=STORAGE_TIMEOUT) for o in objects)
+            _ = deque(await asyncio.gather(*tasks))
         await token.close()
-        return blobs
+        return _
     except Exception as e:
         raise e
 
 
-async def process_log(blob: bytes, time_range: tuple, log_filter: dict = None, log_fields: dict = None) -> list[dict]:
+async def process_log(blob: bytes, time_range: tuple, log_filter: dict = None, log_fields: dict = None) -> deque:
 
-    matches = []
+    matches = deque()
 
     lines = deque(blob.decode('utf-8').rstrip().splitlines())
     del blob
@@ -153,7 +166,7 @@ async def process_log(blob: bytes, time_range: tuple, log_filter: dict = None, l
         entry = dict(zip(log_fields.values(), line))
 
         if len(line) < len(log_fields):
-             continue
+            continue
         if entry['code'] == "NONE/000":
             continue
 
@@ -224,6 +237,7 @@ async def get_data(env_vars: dict = None) -> dict:
     splits = {'start': time()}
 
     settings = get_settings()
+    default_values = settings.get('DEFAULT_VALUES', {})
     assert settings, "Could not load settings.  Does {} exist?".format(SETTINGS_FILE)
     if not (log_fields := settings.get('LOG_FIELDS')):
         log_fields = dict(enumerate(LOG_FIELD_NAMES))
@@ -245,7 +259,7 @@ async def get_data(env_vars: dict = None) -> dict:
 
     now = time()
     # Parse parameters to determine time range
-    interval = int(env_vars.get('interval', settings['DEFAULT_VALUES'].get('interval', 900)))
+    interval = int(env_vars.get('interval', default_values.get('interval', 7200)))
     if env_vars.get('end_time', "") != "":
         end_time = int(env_vars['end_time'])
     else:
@@ -259,22 +273,19 @@ async def get_data(env_vars: dict = None) -> dict:
         #'client_ip': env_vars.get('client_ip', ""),
     }
 
-    # Populate hosts
-    if location := env_vars.get('location'):
-        bucket_name = locations[location].get('bucket_name')
-        bucket_type = locations[location].get('bucket_type')
-        file_path = locations[location].get('file_path')
-        auth_file = locations[location].get('auth_file')
-        server_group = env_vars.get('server_group')
-        servers = {location: []}
-    else:
-        quit()
+    # Populate variables
+    if not (location := env_vars.get('location')):
+        location = default_values.get('location', list(locations.keys())[0])
+    _ = locations[location]
+    bucket_name = _.get('bucket_name')
+    bucket_type = _.get('bucket_type')
+    file_path = _.get('file_path')
+    auth_file = _.get('auth_file')
+    server_group = env_vars.get('server_group')
+    servers = {location: []}
 
     # Get servers for each location
-    try:
-        servers_cache = read_toml(SERVERS_FILE)
-    except Exception as e:
-        return e
+    servers_cache = read_toml(SERVERS_FILE)
 
     splits['get_servers'] = time()
 
@@ -282,13 +293,9 @@ async def get_data(env_vars: dict = None) -> dict:
         token = None
         credentials = None
         if auth_file:
-            pwd = path.realpath(path.dirname(__file__))
-            if system().lower().startswith("win"):
-                auth_file = auth_file.replace("/", "\\")
-            _ = path.join(pwd, auth_file)
-            token = Token(service_file=str(_), scopes=SCOPES)
+            _ = get_full_path(auth_file)
+            token = Token(service_file=_, scopes=SCOPES)
         else:
-            #service_file = environ.get('GOOGLE_APPLICATION_CREDENTIALS')
             credentials, project_id = default(scopes=SCOPES)
             _ = Request()
             credentials.refresh(_)
@@ -304,7 +311,9 @@ async def get_data(env_vars: dict = None) -> dict:
 
     # Populate list of files to read from bucket
     file_names = {}
-    for o in objects:
+    #for o in objects:
+    while len(objects) > 0:
+        o = objects.pop()
         if 'squid_parse_output' in o['name']:
             continue
         server_name = o['name'].split('/')[-1].replace('.log', '')
@@ -319,7 +328,7 @@ async def get_data(env_vars: dict = None) -> dict:
     splits['filter_objects'] = time()
 
     #if action == "get_servers":
-    #    save_toml(SERVERS_FILE, servers)
+    #    write_toml(SERVERS_FILE, servers)
     #    return list(servers[location])
     #splits['save_servers'] = time()
 
@@ -331,15 +340,15 @@ async def get_data(env_vars: dict = None) -> dict:
 
     entries = deque()
     for i, server in enumerate(file_names.keys()):
-        matches = await process_log(blobs[i], time_range, filter, log_fields)
+        matches = await process_log(blobs.popleft(), time_range, filter, log_fields)
         # Inject the server name as a new field
         #print(server)
         #matches = [match.update({'server': server}) for match in matches]
         entries.extend(matches)
         request_counts['server'].update({server: len(matches)})
         byte_counts['server'].update({server: 69})
-    del blobs
     splits['process_objects'] = time()
+    matches = []
 
     # Perform Total Counts
     for field in ['client_ip', 'code', 'method']:
@@ -364,7 +373,7 @@ async def get_data(env_vars: dict = None) -> dict:
         if location not in client_ips:
             client_ips[location] = {}
         client_ips[location][server_group] = list(request_counts['client_ip'].keys())
-        save_toml(CLIENT_IPS_FILE, client_ips)
+        write_toml(CLIENT_IPS_FILE, client_ips)
     splits['save_client_ips'] = time()
 
     last_split = splits['start']
@@ -376,6 +385,13 @@ async def get_data(env_vars: dict = None) -> dict:
             last_split = timestamp
     durations['total'] = f"{round(last_split - splits['start'], 3):.3f}"
 
+    sizes = {
+        'objects': getsizeof(objects),
+        'blobs': sum([getsizeof(o) for o in blobs]),
+        'entries': getsizeof(entries),
+        'request_counts': getsizeof(request_counts),
+        'matches': sum([getsizeof(o) for o in matches]),
+    }
     return {
         'entries': entries,
         'filter': filter,
@@ -387,6 +403,7 @@ async def get_data(env_vars: dict = None) -> dict:
         'requests_by_how': request_counts['how'],
         'bytes_by_client_ip': byte_counts['client_ip'],
         'durations': durations,
+        'sizes': sizes,
         'time_range': time_range,
         #'num_servers': len(servers[location]),
     }
@@ -394,6 +411,9 @@ async def get_data(env_vars: dict = None) -> dict:
 
 if __name__ == '__main__':
 
-    locations = get_locations()
-    _ = run(get_data({'location': list(locations.keys())[0]}))
-    print(_['durations'])
+    try:
+        arguments = {}
+        _ = asyncio.run(get_data(arguments))
+        print(_['durations'], "\n", _['sizes'])
+    except Exception as e:
+        quit(e)
