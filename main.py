@@ -244,7 +244,7 @@ async def get_data(env_vars: dict = None) -> dict:
     splits['get_settings'] = time()
 
     locations = get_locations()
-    assert locations, "Could not load locations.  Does {} exist?".format(LOCATIONS_FILE)
+    assert locations, f"Could not load locations.  Does {LOCATIONS_FILE} exist?"
     splits['get_locations'] = time()
 
     #action = env_vars.get('action')
@@ -276,6 +276,7 @@ async def get_data(env_vars: dict = None) -> dict:
     # Populate variables
     if not (location := env_vars.get('location')):
         location = default_values.get('location', list(locations.keys())[0])
+    assert locations.get(location), f"Could not find location '{location}' in locations list"
     _ = locations[location]
     bucket_name = _.get('bucket_name')
     bucket_type = _.get('bucket_type')

@@ -4,7 +4,7 @@ REGION := us-central1
 
 include Makefile.env
 
-all: gcp-setup cloud-build cloud-run-deploy
+all: gcp-setup cloud-run
 
 gcp-setup:
 	gcloud config set project $(GCP_PROJECT_ID)
