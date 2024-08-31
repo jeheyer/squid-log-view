@@ -4,15 +4,15 @@ REGION := us-central1
 
 include Makefile.env
 
-all: gcp-setup cloud-run
+all: gcp-setup cloud-function cloud-run
 
 gcp-setup:
 	gcloud config set project $(GCP_PROJECT_ID)
 
 cloud-function:
 	gcloud config set functions/region $(REGION)
-	gcloud functions deploy $(SERVICE_NAME) --runtime=$(RUNTIME)  --region=$(REGION) \
-	--gen2 --source=. --entry-point=hello_get --trigger-http --allow-unauthenticated
+	gcloud functions deploy $(SERVICE_NAME) --runtime=$(RUNTIME) --region=$(REGION) \
+	--gen2 --source=. --entry-point=ping --trigger-http --memory=512MB --allow-unauthenticated
 
 cloud-run:
 	gcloud config set run/region $(REGION)

@@ -26,6 +26,14 @@ STATUS_CODES_FILE = 'status_codes.toml'
 SCOPES = ["https://www.googleapis.com/auth/cloud-platform.read-only"]
 
 
+def ping():
+
+    try:
+        return get_settings()
+    except Exception as e:
+        return e
+
+
 def get_full_path(file_name: str) -> str:
 
     pwd = os.path.realpath(os.path.dirname(__file__))

@@ -1,8 +1,7 @@
 gcloud-aio-storage
 google-auth
-gunicorn
 requests
-flask
 tomli
 tomli_w
-guppy3
+flask==2.3.3
+gunicorn==20.0.4
