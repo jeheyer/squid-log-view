@@ -147,7 +147,6 @@ async def get_storage_objects(bucket: str, token: Token, objects: list = None) -
     """
     Given a GCS bucket name and list of files, return the contents of the files
     """
-
     if objects is None:
         file_names = []
     try:
@@ -171,7 +170,9 @@ async def process_log(blob: bytes, time_range: tuple, log_filter: dict = None, l
 
         # Work backwards on file, since newer entries are at the end
         line = tuple(lines.pop().split())
+        #print(line, len(lines))
         entry = dict(zip(log_fields.values(), line))
+        #print(entry)
 
         if len(line) < len(log_fields):
             continue
@@ -180,10 +181,11 @@ async def process_log(blob: bytes, time_range: tuple, log_filter: dict = None, l
 
         # Check if timestamp is within search range
         timestamp = int(entry.get('timestamp')[0:10])
+        #print(time_range[0], str(datetime.fromtimestamp(timestamp)), time_range[1])
         if timestamp >= time_range[1]:
-            continue  # haven't read enough
+            continue  # haven't read enough, so skip this line
         if timestamp <= time_range[0]:
-            break  # read too far
+            break  # read too far, so break
 
         match = True
         if log_filter:
