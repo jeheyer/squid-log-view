@@ -10,7 +10,6 @@ from math import floor
 from sys import getsizeof
 from gcloud.aio.auth import Token
 from gcloud.aio.storage import Storage
-from google.auth import default
 from google.auth.transport.requests import Request
 
 LOG_FIELD_NAMES = ("timestamp", "elapsed", "client_ip", "code", "bytes", "method", "url", "rfc931", "how", "type")
