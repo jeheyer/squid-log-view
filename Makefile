@@ -1,10 +1,19 @@
 SERVICE = squid-log-view
 RUNTIME := python311
 REGION := us-central1
+PORT := 8080
 
 include Makefile.env
 
-all: gcp-setup cloud-function cloud-run
+all: docker gcp
+docker: docker-build docker-run
+gcp: gcp-setup cloud-function cloud-run
+
+docker-build:
+	docker build -t $(SERVICE) .
+
+docker-run:
+	docker run -p 31280\:$(PORT) $(SERVICE)
 
 gcp-setup:
 	gcloud config set project $(PROJECT_ID)
