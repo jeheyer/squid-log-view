@@ -53,6 +53,7 @@ location.search.substr(1).split("&").forEach(function(item) {
                  <tr class="odd-good">
             {% endif %}
         {% endif %}
+        <td>{{entry.server_name}}</td>
         <td>{{entry.timestamp}}</td>
         <td>{{entry.elapsed}}</td>
         <td>{{entry.client_ip}}</td>

@@ -69,16 +69,19 @@ def _middle():
 
     try:
         settings = get_settings()
-        if server_group := request.args.get('server_group'):
-            session['server_group'] = server_group
+        if _server_group := request.args.get('server_group'):
+            session['server_group'] = _server_group  # Set a Cookie
         else:
-            server_group = session.get('server_group')
-        client_ip = request.args.get('client_ip')
-        field_names = settings.get('LOG_FIELDS')
-        data = run(get_data(request.args)) if 'location' in request.args else dict(entries=[])
-        return render_template(request.path, server_group=server_group, data=data,
-                               num_entries=len(data['entries']),
-                               fields=field_names, client_ip=client_ip, env_vars=request.args)
+            _server_group = session.get('server_group')
+        _client_ip = request.args.get('client_ip')
+        _fields = {'-1': 'server_name'}
+        _ = settings.get('LOG_FIELDS')
+        _fields.update(_)
+        _data = run(get_data(request.args)) if 'location' in request.args else dict(entries=[])
+        _num_entries = len(_data['entries'])
+        return render_template(request.path, server_group=_server_group, data=_data,
+                               num_entries=_num_entries,
+                               fields=_fields, client_ip=_client_ip, env_vars=request.args)
     except Exception as e:
         return Response(traceback.format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 

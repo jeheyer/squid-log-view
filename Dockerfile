@@ -1,6 +1,7 @@
 FROM python:3.12-alpine
 ENV PORT=8080
 ENV APP_DIR=/opt
+ENV PIP_ROOT_USER_ACTION=ignore
 WORKDIR /tmp
 COPY requirements.txt ./
 RUN pip3 install --upgrade pip

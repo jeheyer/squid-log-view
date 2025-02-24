@@ -158,7 +158,7 @@ async def get_storage_objects(bucket: str, token: Token, objects: list = None) -
         raise e
 
 
-async def process_log(blob: bytes, time_range: tuple, log_filter: dict = None, log_fields: dict = None) -> deque:
+async def process_log(server_name: str, blob: bytes, time_range: tuple, log_filter: dict = None, log_fields: dict = None) -> deque:
 
     matches = deque()
 
@@ -170,7 +170,8 @@ async def process_log(blob: bytes, time_range: tuple, log_filter: dict = None, l
         # Work backwards on file, since newer entries are at the end
         line = tuple(lines.pop().split())
         #print(line, len(lines))
-        entry = dict(zip(log_fields.values(), line))
+        entry = {'server_name': server_name }
+        entry.update({v: line[int(k)] for k, v in log_fields.items() })
         #print(entry)
 
         if len(line) < len(log_fields):
@@ -343,20 +344,25 @@ async def get_data(env_vars: dict = None) -> dict:
     #splits['save_servers'] = time()
 
     # Read the objects from the bucket
-    blobs = await get_storage_objects(bucket_name, token, list(file_names.values()))
+    server_names = list(file_names.keys())
+    object_names = list(file_names.values())
+    blobs = await get_storage_objects(bucket_name, token, object_names)
+    #tasks = [get_storage_objects(bucket_name, token, object_names)]
+    #blobs = dict(zip(server_names, object_names))
     splits['read_objects'] = time()
 
     byte_counts = {k: {} for k in ['server', 'client_ip', 'domain']}
 
     entries = deque()
-    for i, server in enumerate(file_names.keys()):
-        matches = await process_log(blobs.popleft(), time_range, filter, log_fields)
+    for i, server_name in enumerate(server_names):
+        _blob = blobs.popleft()
+        matches = await process_log(server_name, _blob, time_range, filter, log_fields)
         # Inject the server name as a new field
         #print(server)
         #matches = [match.update({'server': server}) for match in matches]
         entries.extend(matches)
-        request_counts['server'].update({server: len(matches)})
-        byte_counts['server'].update({server: 69})
+        request_counts['server'].update({server_name: len(matches)})
+        byte_counts['server'].update({server_name: 69})
     splits['process_objects'] = time()
     matches = []
 
