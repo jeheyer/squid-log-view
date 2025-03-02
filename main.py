@@ -1,13 +1,12 @@
-import os
-import pathlib
-import tomli
-import tomli_w
-import asyncio
-from collections import deque, Counter
-from datetime import datetime
+from os.path import realpath, dirname, join, exists, getsize
+from asyncio import gather, run
 from time import time
 from math import floor
 from sys import getsizeof
+from collections import deque, Counter
+from datetime import datetime
+from tomli import load
+from tomli_w import dump
 from gcloud.aio.auth import Token
 from gcloud.aio.storage import Storage
 #from google.auth.transport.requests import Request
@@ -35,12 +34,12 @@ def ping():
 
 def get_full_path(file_name: str) -> str:
 
-    pwd = os.path.realpath(os.path.dirname(__file__))
-    full_path = os.path.join(pwd, file_name)
-    _ = pathlib.Path(full_path)
-    if not _.is_file():
+    pwd = realpath(dirname(__file__))
+    full_path = join(pwd, file_name)
+    #_ = pathlib.Path(full_path)
+    if not exists(full_path):
         raise FileNotFoundError(f"File '{full_path}' does not exist!")
-    if not _.stat().st_size > 0:
+    if getsize(full_path) < 1:
         raise FileExistsError(f"File '{full_path}' is empty!")
     return full_path
 
@@ -50,7 +49,7 @@ def read_toml(file_name: str) -> dict:
     try:
         if _ := get_full_path(file_name):
             fp = open(_, mode="rb")
-            _ = tomli.load(fp)
+            _ = load(fp)
             fp.close()
             return _
     except FileNotFoundError:
@@ -64,7 +63,7 @@ def write_toml(file_name: str, data: dict):
     try:
         _ = get_full_path(file_name)
         fp = open(_, mode="wb")
-        tomli_w.dump(data, fp)
+        dump(data, fp)
         fp.close()
         return
     except Exception as e:
@@ -151,7 +150,7 @@ async def get_storage_objects(bucket: str, token: Token, objects: list = None) -
     try:
         async with Storage(token=token) as storage:
             tasks = (storage.download(bucket, o, timeout=STORAGE_TIMEOUT) for o in objects)
-            _ = deque(await asyncio.gather(*tasks))
+            _ = deque(await gather(*tasks))
         await token.close()
         return _
     except Exception as e:
@@ -429,7 +428,7 @@ if __name__ == '__main__':
 
     try:
         arguments = {}
-        _ = asyncio.run(get_data(arguments))
+        _ = run(get_data(arguments))
         print(_['durations'], "\n", _['sizes'])
     except Exception as e:
         quit(e)

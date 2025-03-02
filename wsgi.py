@@ -1,7 +1,7 @@
-import random
-import traceback
-from flask import Flask, request, jsonify, render_template, Response, session
+from random import randint
+from traceback import format_exc
 from asyncio import run
+from flask import Flask, request, jsonify, render_template, Response, session
 from main import get_settings, get_locations, get_data, get_client_ips
 
 
@@ -14,7 +14,7 @@ PLAIN_TEXT_CONTENT_TYPE = "text/plain"
 app = Flask(__name__, static_url_path='/static')
 app.config['JSON_SORT_KEYS'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = "Strict"
-app.secret_key = str(random.randint(0, 1000000))
+app.secret_key = str(randint(0, 1000000))
 
 
 @app.route("/")
@@ -24,7 +24,7 @@ def _root():
     try:
         return render_template('index.html')
     except Exception as e:
-        return Response(traceback.format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 @app.route("/top.html")
@@ -61,7 +61,7 @@ def _top():
                                server_groups=server_groups, server_group=values['server_group'], client_ips=client_ips,
                                status_codes=status_codes, intervals=intervals, status_code=values['status_code'])
     except Exception as e:
-        return Response(traceback.format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 @app.route("/middle.html")
@@ -83,7 +83,7 @@ def _middle():
                                num_entries=_num_entries,
                                fields=_fields, client_ip=_client_ip, env_vars=request.args)
     except Exception as e:
-        return Response(traceback.format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 @app.route("/bottom.html")
@@ -93,7 +93,7 @@ def _bottom():
         locations = get_locations()
         return render_template(request.path, locations=locations)
     except Exception as e:
-        return Response(traceback.format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 @app.route("/get_data")
@@ -105,7 +105,7 @@ def _get_data():
         data = run(get_data(request.args)) if request.args.get('location') else dict(entries=[])
         return jsonify(data), response_headers
     except Exception as e:
-        return Response(traceback.format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
 
 
 if __name__ == '__main__':
