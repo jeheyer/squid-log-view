@@ -2,14 +2,14 @@ from random import randint
 from traceback import format_exc
 from asyncio import run
 from flask import Flask, request, jsonify, render_template, Response, session
-from main import get_settings, get_locations, get_data, get_client_ips
+from main import get_settings, get_locations, get_data, get_client_ips, read_cache_file, write_cache_file
 
 
-DEFAULT_RESPONSE_HEADERS = {'Cache-Control': "no-cache, no-store"}
-DEFAULT_SERVER_GROUPS = {'all': "All Servers"}
-DEFAULT_STATUS_CODES = ["200", "400", "301", "403", "302", "500", "502", "503"]
-PLAIN_TEXT_CONTENT_TYPE = "text/plain"
-
+DEFAULTS = {
+    'response_headers': {'Cache-Control': "no-cache, no-store"},
+    'server_groups':  {'all': "All Servers"},
+    'content_type': "text/plain",
+}
 
 app = Flask(__name__, static_url_path='/static')
 app.config['JSON_SORT_KEYS'] = False
@@ -24,7 +24,7 @@ def _root():
     try:
         return render_template('index.html')
     except Exception as e:
-        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=DEFAULTS['content_type'])
 
 
 @app.route("/top.html")
@@ -44,24 +44,26 @@ def _top():
                     session[field_name] = field_value  # Set or update cookie
             else:
                 # Try to fetch from cookie, if not, use defaults
-                if not(field_value := session.get(field_name)):
+                if not (field_value := session.get(field_name)):
                     field_value = str(defaults.get(field_name, ""))
             values[field_name] = field_value
+            print('values:', values)
 
         server_groups = []
         client_ips = []
+        status_codes = []
         if location := values.get('location'):
-            server_groups = locations[location].get('server_groups', DEFAULT_SERVER_GROUPS)
+            server_groups = locations[location].get('server_groups', DEFAULTS['server_groups'])
             if server_group := values.get('server_group'):
                 client_ips = get_client_ips(location, server_group)
-
-        status_codes = settings.get('DEFAULT_VALUES', {}).get('STATUS_CODES', DEFAULT_STATUS_CODES)
-
+                print("Got client Ips for ", location, server_group)
+            _ = read_cache_file('status_codes')
+            status_codes = _.get(location, [])
         return render_template(request.path, locations=locations, interval=values['interval'], location=location,
                                server_groups=server_groups, server_group=values['server_group'], client_ips=client_ips,
                                status_codes=status_codes, intervals=intervals, status_code=values['status_code'])
     except Exception as e:
-        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=DEFAULTS['content_type'])
 
 
 @app.route("/middle.html")
@@ -83,7 +85,7 @@ def _middle():
                                num_entries=_num_entries,
                                fields=_fields, client_ip=_client_ip, env_vars=request.args)
     except Exception as e:
-        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=DEFAULTS['content_type'])
 
 
 @app.route("/bottom.html")

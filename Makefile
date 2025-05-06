@@ -1,5 +1,5 @@
 SERVICE = squid-log-view
-RUNTIME := python312
+RUNTIME := python313
 REGION := us-central1
 PORT := 8080
 

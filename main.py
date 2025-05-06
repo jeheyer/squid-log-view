@@ -4,23 +4,24 @@ from time import time
 from math import floor
 from sys import getsizeof
 from collections import deque, Counter
+import tomli
+import json
 from datetime import datetime
-from tomli import load
-from tomli_w import dump
+from tempfile import gettempdir
 from gcloud.aio.auth import Token
 from gcloud.aio.storage import Storage
-#from google.auth.transport.requests import Request
+from google.auth.transport.requests import Request
 
-LOG_FIELD_NAMES = ("timestamp", "elapsed", "client_ip", "code", "bytes", "method", "url", "rfc931", "how", "type")
-FILTER_FIELD_NAMES = ('client_ip', 'code', 'url')
+LOG_FIELD_NAMES = ("timestamp", "elapsed", "client_ip", "status_code", "bytes", "method", "url", "rfc931", "how", "type")
+FILTER_FIELD_NAMES = ('client_ip', 'status_code', 'url')
+DEFAULT_STATUS_CODES = ("200", "400", "301", "403", "302", "500", "502", "503")
+IGNORE_STATUS_CODES = ('NONE/000')
 DEFAULT_FILTER = {}
 UNITS = ("KB", "MB", "GB", "TB", "PB")
 STORAGE_TIMEOUT = 55
 SETTINGS_FILE = 'settings.toml'
 LOCATIONS_FILE = 'locations.toml'
-SERVERS_FILE = 'servers.toml'
-CLIENT_IPS_FILE = 'client_ips.toml'
-STATUS_CODES_FILE = 'status_codes.toml'
+TEMPDIR = gettempdir()
 SCOPES = ["https://www.googleapis.com/auth/cloud-platform.read-only"]
 
 
@@ -36,7 +37,6 @@ def get_full_path(file_name: str) -> str:
 
     pwd = realpath(dirname(__file__))
     full_path = join(pwd, file_name)
-    #_ = pathlib.Path(full_path)
     if not exists(full_path):
         raise FileNotFoundError(f"File '{full_path}' does not exist!")
     if getsize(full_path) < 1:
@@ -44,13 +44,15 @@ def get_full_path(file_name: str) -> str:
     return full_path
 
 
-def read_toml(file_name: str) -> dict:
+def read_cache_file(data_type: str) -> dict:
 
     try:
-        if _ := get_full_path(file_name):
-            fp = open(_, mode="rb")
-            _ = load(fp)
+        cache_file = data_type + ".json"
+        if cache_file := join(TEMPDIR, cache_file):
+            fp = open(cache_file, mode="rb")
+            _ = json.load(fp)
             fp.close()
+            print(f"Successfully read cache file for '{data_type}': {cache_file}")
             return _
     except FileNotFoundError:
         return {}
@@ -58,14 +60,32 @@ def read_toml(file_name: str) -> dict:
         raise e
 
 
-def write_toml(file_name: str, data: dict):
+def write_cache_file(data_type: str, data: dict) -> bool:
 
     try:
-        _ = get_full_path(file_name)
-        fp = open(_, mode="wb")
-        dump(data, fp)
-        fp.close()
-        return
+        cache_file = data_type + ".json"
+        if cache_file := join(TEMPDIR, cache_file):
+            fp = open(cache_file, mode="w")
+            json.dump(data, fp)
+            fp.close()
+            print(f"Successfully wrote cache file for '{data_type}': {cache_file}")
+            return True
+    except FileNotFoundError:
+        return False
+    except Exception as e:
+        raise e
+
+
+def read_toml(file_name: str) -> dict:
+
+    try:
+        if _ := get_full_path(file_name):
+            fp = open(_, mode="rb")
+            _ = tomli.load(fp)
+            fp.close()
+            return _
+    except FileNotFoundError:
+        return {}
     except Exception as e:
         raise e
 
@@ -82,12 +102,13 @@ def get_locations() -> dict:
 
 def get_servers(filter: str = None) -> dict:
 
-    return read_toml(SERVERS_FILE)
+    _ = read_cache_file('servers')
+    return _
 
 
 def get_client_ips(location: str, server_group: str) -> list:
 
-    _ = read_toml(CLIENT_IPS_FILE)
+    _ = read_cache_file('client_ips')
     if location := _.get(location):
         return location.get(server_group, [])
     return []
@@ -140,13 +161,11 @@ async def list_storage_objects(bucket: str, token: Token, prefix: str = "", time
     return [o for o in objects if object_is_current(o, time_range[0])]
 
 
-async def get_storage_objects(bucket: str, token: Token, objects: list = None) -> deque:
+async def get_storage_objects(bucket: str, token: Token, objects: list = ()) -> deque:
 
     """
     Given a GCS bucket name and list of files, return the contents of the files
     """
-    if objects is None:
-        file_names = []
     try:
         async with Storage(token=token) as storage:
             tasks = (storage.download(bucket, o, timeout=STORAGE_TIMEOUT) for o in objects)
@@ -168,31 +187,32 @@ async def process_log(server_name: str, blob: bytes, time_range: tuple, log_filt
 
         # Work backwards on file, since newer entries are at the end
         line = tuple(lines.pop().split())
-        #print(line, len(lines))
-        entry = {'server_name': server_name }
-        entry.update({v: line[int(k)] for k, v in log_fields.items() })
-        #print(entry)
+        entry = {'server_name': server_name}
+        entry.update({v: line[int(k)] for k, v in log_fields.items()})
 
+        # Skip lines that have invalid / unexpected data
         if len(line) < len(log_fields):
             continue
-        if entry['code'] == "NONE/000":
+        # Skip lines that have special codes
+        if entry['status_code'] in IGNORE_STATUS_CODES:
             continue
 
         # Check if timestamp is within search range
         timestamp = int(entry.get('timestamp')[0:10])
-        #print(time_range[0], str(datetime.fromtimestamp(timestamp)), time_range[1])
         if timestamp >= time_range[1]:
             continue  # haven't read enough, so skip this line
         if timestamp <= time_range[0]:
             break  # read too far, so break
 
         match = True
+        """
         if log_filter:
             match = False
             for k, v in log_filter.items():
                 if v in entry.get(k):
                     match = True
                     break
+        """
         if not match:
             continue
 
@@ -225,7 +245,7 @@ async def process_log(server_name: str, blob: bytes, time_range: tuple, log_filt
             size_str = "unknown"
         entry.update({'size': size_str})
 
-        if url := entry['url']:
+        if url := entry.get('url'):
             if url.startswith("http:"):
                 # Remove full URL from HTTP requests
                 host = url[7:].split('/')[0]
@@ -248,8 +268,8 @@ async def get_data(env_vars: dict = None) -> dict:
     settings = get_settings()
     default_values = settings.get('DEFAULT_VALUES', {})
     assert settings, "Could not load settings.  Does {} exist?".format(SETTINGS_FILE)
-    if not (log_fields := settings.get('LOG_FIELDS')):
-        log_fields = dict(enumerate(LOG_FIELD_NAMES))
+    #if not (log_fields := settings.get('LOG_FIELDS')):
+    log_fields = dict(enumerate(LOG_FIELD_NAMES))
     splits['get_settings'] = time()
 
     locations = get_locations()
@@ -295,7 +315,8 @@ async def get_data(env_vars: dict = None) -> dict:
     servers = {location: []}
 
     # Get servers for each location
-    servers_cache = read_toml(SERVERS_FILE)
+    #servers_cache = read_toml(SERVERS_FILE)
+    #servers = read_cache_file('servers')
 
     splits['get_servers'] = time()
 
@@ -337,17 +358,10 @@ async def get_data(env_vars: dict = None) -> dict:
             request_counts['server'].update({server_name: 0})
     splits['filter_objects'] = time()
 
-    #if action == "get_servers":
-    #    write_toml(SERVERS_FILE, servers)
-    #    return list(servers[location])
-    #splits['save_servers'] = time()
-
     # Read the objects from the bucket
     server_names = list(file_names.keys())
     object_names = list(file_names.values())
     blobs = await get_storage_objects(bucket_name, token, object_names)
-    #tasks = [get_storage_objects(bucket_name, token, object_names)]
-    #blobs = dict(zip(server_names, object_names))
     splits['read_objects'] = time()
 
     byte_counts = {k: {} for k in ['server', 'client_ip', 'domain']}
@@ -366,29 +380,41 @@ async def get_data(env_vars: dict = None) -> dict:
     matches = []
 
     # Perform Total Counts
-    for field in ['client_ip', 'code', 'method']:
-        request_counts.update({field: Counter([_.get(field) for _ in entries])})
+    for field in ('client_ip', 'status_code', 'method'):
+        request_counts[field] = Counter([_.get(field) for _ in entries])
 
     request_counts.update({
         'domain': Counter([_['host'][7:].split("/")[0] if _['host'].startswith("http:") else _['host'] for _ in entries]),
         'how':  Counter([_['how'].split("/")[0] for _ in entries]),
     })
     for _ in entries:
-        client_ip = _['client_ip']
-        bytes = int(_['bytes'])
-        byte_counts['client_ip'][client_ip] = byte_counts['client_ip'][client_ip] + bytes if byte_counts['client_ip'].get(client_ip) else bytes
+        _client_ip = _['client_ip']
+        _bytes = int(_['bytes'])
+        byte_counts['client_ip'][_client_ip] = byte_counts['client_ip'].get(_client_ip, 0) + _bytes
     splits['do_counts'] = time()
 
     # Sort by timestamp reversed, so that latest entries are first in the list
     entries = sorted(entries, key=lambda x: x['timestamp'], reverse=True)
     splits['sort_entries'] = time()
 
-    if location and server_group:
-        client_ips = read_toml(CLIENT_IPS_FILE)
+    status_codes = read_cache_file('status_codes')
+    if location not in status_codes:
+        status_codes[location] = list(DEFAULT_STATUS_CODES)
+    print("request counts:", request_counts)
+    print("status_codes:", status_codes)
+
+    status_codes[location] = list(request_counts['status_code'].keys())
+    print("status_codes:", status_codes)
+    _ = write_cache_file('status_codes', status_codes)
+    splits['save_status_codes'] = time()
+
+    if server_group:
+        # Update Client IPs Cache
+        client_ips = read_cache_file('client_ips')
         if location not in client_ips:
-            client_ips[location] = {}
+            client_ips[location] = {server_group: []}
         client_ips[location][server_group] = list(request_counts['client_ip'].keys())
-        write_toml(CLIENT_IPS_FILE, client_ips)
+        write_cache_file('client_ips', client_ips)
     splits['save_client_ips'] = time()
 
     last_split = splits['start']
