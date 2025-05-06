@@ -12,6 +12,6 @@ COPY templates/ $APP_DIR/templates/
 COPY *.py $APP_DIR/
 COPY *.toml $APP_DIR/
 COPY *.json $APP_DIR/
-ENTRYPOINT cd $APP_DIR && gunicorn -b 0.0.0.0:$PORT -w 1 --access-logfile '-' wsgi:app
 #ENTRYPOINT ["pip", "list"]
+ENTRYPOINT cd $APP_DIR && gunicorn -b 0.0.0.0:$PORT -w 1 --access-logfile '-' wsgi:app
 EXPOSE $PORT
