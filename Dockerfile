@@ -1,4 +1,5 @@
-FROM python:3.12-alpine
+ARG RUNTIME="python:3.13"
+FROM ${RUNTIME}-alpine
 ENV PORT=8080
 ENV APP_DIR=/opt
 ENV PIP_ROOT_USER_ACTION=ignore
