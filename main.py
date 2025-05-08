@@ -52,7 +52,7 @@ def read_cache_file(data_type: str) -> dict:
             fp = open(cache_file, mode="rb")
             _ = json.load(fp)
             fp.close()
-            print(f"Successfully read cache file for '{data_type}': {cache_file}")
+            #print(f"Successfully read cache file for '{data_type}': {cache_file}")
             return _
     except FileNotFoundError:
         return {}
@@ -68,7 +68,7 @@ def write_cache_file(data_type: str, data: dict) -> bool:
             fp = open(cache_file, mode="w")
             json.dump(data, fp)
             fp.close()
-            print(f"Successfully wrote cache file for '{data_type}': {cache_file}")
+            #print(f"Successfully wrote cache file for '{data_type}': {cache_file}")
             return True
     except FileNotFoundError:
         return False

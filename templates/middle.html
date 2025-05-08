@@ -38,13 +38,21 @@ location.search.substr(1).split("&").forEach(function(item) {
     {% endfor %}
     </tr>
     {% for entry in data.entries %}
-        {% if entry.code == 503 %}
+        {% if entry.status_code  == "" %}
             <tr class="even-error">
-        {% elif entry.code == "TCP_DENIED/403" %}
+        {% elif entry.status_code == 502 %}
+            <tr class="even-error">
+        {% elif entry.status_code == 503 %}
+            <tr class="even-error">
+        {% elif "/502" in entry.status_code %}
+            <tr class="even-error">
+        {% elif "/503" in entry.status_code %}
+            <tr class="even-error">
+        {% elif entry.status_code == "TCP_DENIED/403" %}
             <tr class="even-warn">
-        {% elif entry.code == "TCP_MISS/403" %}
+        {% elif entry.status_code == "TCP_MISS/403" %}
             <tr class="even-warn">
-        {% elif entry.code == "NONE/400" %}
+        {% elif entry.status_code == "NONE/400" %}
             <tr class="even-warn">
         {% else %}
             {%if loop.index is divisibleby 2 %}
@@ -57,7 +65,7 @@ location.search.substr(1).split("&").forEach(function(item) {
         <td>{{entry.timestamp}}</td>
         <td>{{entry.elapsed}}</td>
         <td>{{entry.client_ip}}</td>
-        <td>{{entry.code}}</td>
+        <td>{{entry.status_code}}</td>
         <td>{{entry.size}}</td>
         <td>{{entry.method}}</td>
         <td>{{entry.host}}</td>
