@@ -14,11 +14,12 @@ from google.auth.transport.requests import Request
 
 LOG_FIELD_NAMES = ("timestamp", "elapsed", "client_ip", "status_code", "bytes", "method", "url", "rfc931", "how", "type")
 FILTER_FIELD_NAMES = ('client_ip', 'status_code', 'url')
-DEFAULT_STATUS_CODES = ("200", "400", "301", "403", "302", "500", "502", "503")
+DEFAULT_STATUS_CODES = ("TCP_TUNNEL/200", "TCP_MEM_HIT/200", "TCP_REFRESH_MODIFIED/200", "TCP_MISS/304", "TCP_REFRESH_UNMODIFIED/304", "NONE_NONE/503")
 IGNORE_STATUS_CODES = ('NONE/000')
 DEFAULT_FILTER = {}
 UNITS = ("KB", "MB", "GB", "TB", "PB")
 STORAGE_TIMEOUT = 55
+REQUEST_COUNT_FIELDS = ('server', 'client_ip', 'method', 'status_code', 'domain')
 SETTINGS_FILE = 'settings.toml'
 LOCATIONS_FILE = 'locations.toml'
 TEMPDIR = gettempdir()
@@ -204,17 +205,21 @@ async def process_log(server_name: str, blob: bytes, time_range: tuple, log_filt
         if timestamp <= time_range[0]:
             break  # read too far, so break
 
-        match = True
-        """
-        if log_filter:
+        if all(not v or v == "" for v in log_filter.values()):
+            match = True
+        else:
             match = False
+            #print("log_filter:", log_filter)
             for k, v in log_filter.items():
+                if not v or v == "":
+                    continue
                 if v in entry.get(k):
                     match = True
+                else:
+                    match = False
                     break
-        """
         if not match:
-            continue
+            continue  # Skip entry if filter specified, but no match
 
         time_str = str(datetime.fromtimestamp(timestamp))
         entry.update({'timestamp': time_str})
@@ -297,10 +302,7 @@ async def get_data(env_vars: dict = None) -> dict:
     time_range = (start_time, end_time)
 
     # Parse parameters to determine filter
-    filter = {
-        'code': env_vars.get('status_code', ""),
-        #'client_ip': env_vars.get('client_ip', ""),
-    }
+    filter = {k: env_vars.get(k, "") for k in FILTER_FIELD_NAMES}
 
     # Populate variables
     if not (location := env_vars.get('location')):
@@ -338,11 +340,10 @@ async def get_data(env_vars: dict = None) -> dict:
     objects = await list_storage_objects(bucket_name, token=token, prefix=file_path, time_range=time_range)
     splits['list_objects'] = time()
 
-    request_counts = {k: {} for k in ['server', 'client_ip', 'method', 'status_code', 'domain']}
+    request_counts = {k: {} for k in REQUEST_COUNT_FIELDS}
 
     # Populate list of files to read from bucket
     file_names = {}
-    #for o in objects:
     while len(objects) > 0:
         o = objects.pop()
         if 'squid_parse_output' in o['name']:
@@ -399,12 +400,13 @@ async def get_data(env_vars: dict = None) -> dict:
 
     status_codes = read_cache_file('status_codes')
     if location not in status_codes:
-        status_codes[location] = list(DEFAULT_STATUS_CODES)
-    print("request counts:", request_counts)
-    print("status_codes:", status_codes)
+        #status_codes[location] = list(DEFAULT_STATUS_CODES)
+        status_codes[location] = list(default_values.get('STATUS_CODES', DEFAULT_STATUS_CODES))
+    #print("request counts:", request_counts)
+    #print("status_codes:", status_codes)
 
-    status_codes[location] = list(request_counts['status_code'].keys())
-    print("status_codes:", status_codes)
+    status_codes[location] = list(set(status_codes[location] + list(request_counts['status_code'].keys())))
+    #print("status_codes:", status_codes)
     _ = write_cache_file('status_codes', status_codes)
     splits['save_status_codes'] = time()
 

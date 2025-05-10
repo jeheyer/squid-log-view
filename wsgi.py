@@ -37,11 +37,12 @@ def _top():
         defaults = settings['DEFAULT_VALUES']
 
         values = {}
-        for field_name in ['location', 'server_group', 'interval', 'status_code']:
+        for field_name in ('location', 'server_group', 'interval', 'status_code'):
             # If value specified in query string, use that
             if field_value := request.args.get(field_name):
-                if session.get(field_name) != field_value:
-                    session[field_name] = field_value  # Set or update cookie
+                print("request arg:", field_name, "is set to", field_value)
+                #if session.get(field_name) != field_value:
+                #    session[field_name] = field_value  # Set or update cookie
             else:
                 # Try to fetch from cookie, if not, use defaults
                 if not (field_value := session.get(field_name)):
@@ -56,7 +57,7 @@ def _top():
             server_groups = locations[location].get('server_groups', DEFAULTS['server_groups'])
             if server_group := values.get('server_group'):
                 client_ips = get_client_ips(location, server_group)
-                print("Got client Ips for ", location, server_group)
+                print("Got client", len(client_ips), "IPs for", location, server_group)
             _ = read_cache_file('status_codes')
             status_codes = _.get(location, [])
         return render_template(request.path, locations=locations, interval=values['interval'], location=location,
@@ -95,7 +96,7 @@ def _bottom():
         locations = get_locations()
         return render_template(request.path, locations=locations)
     except Exception as e:
-        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=DEFAULTS['content_type'])
 
 
 @app.route("/get_data")
@@ -103,11 +104,11 @@ def _get_data():
 
     try:
         settings = get_settings()
-        response_headers = settings.get('RESPONSE_HEADERS', DEFAULT_RESPONSE_HEADERS)
+        response_headers = settings.get('RESPONSE_HEADERS', DEFAULTS['response_headers'])
         data = run(get_data(request.args)) if request.args.get('location') else dict(entries=[])
         return jsonify(data), response_headers
     except Exception as e:
-        return Response(format_exc(), 500, content_type=PLAIN_TEXT_CONTENT_TYPE)
+        return Response(format_exc(), 500, content_type=DEFAULTS['content_type'])
 
 
 if __name__ == '__main__':
