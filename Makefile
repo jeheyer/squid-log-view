@@ -33,10 +33,8 @@ cloud-function:
 	--gen2 --source=. --entry-point=ping --trigger-http --memory=512MB --allow-unauthenticated
 
 cloud-build:
-	#gcloud builds submit --tag gcr.io/$(PROJECT_ID)/$(SERVICE) .
 	gcloud builds submit --tag $(IMAGE) .
 
 cloud-run:
 	gcloud config set run/region $(REGION)
-	#gcloud run deploy $(SERVICE) --image gcr.io/$(PROJECT_ID)/$(SERVICE) --port $(PORT) --allow-unauthenticated
 	gcloud run deploy $(SERVICE) --image $(IMAGE) --port $(PORT) --platform=managed --allow-unauthenticated
