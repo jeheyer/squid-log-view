@@ -37,18 +37,20 @@ def _top():
         defaults = settings['DEFAULT_VALUES']
 
         values = {}
-        for field_name in ('location', 'server_group', 'interval', 'status_code'):
-            # If value specified in query string, use that
-            if field_value := request.args.get(field_name):
-                print("request arg:", field_name, "is set to", field_value)
-                #if session.get(field_name) != field_value:
-                #    session[field_name] = field_value  # Set or update cookie
+        #print("request args:", request.args)
+        for field_name in ('location', 'server_group', 'interval', 'status_code', 'end_time'):
+            update_cookie = False
+            field_value = request.args.get(field_name, "")
+            if field_value == "":
+                field_value = str(defaults.get(field_name, ""))
+                update_cookie = True
             else:
-                # Try to fetch from cookie, if not, use defaults
-                if not (field_value := session.get(field_name)):
-                    field_value = str(defaults.get(field_name, ""))
-            values[field_name] = field_value
-            print('values:', values)
+                if session.get(field_name) != field_value:
+                    update_cookie = True
+            values.update({field_name: field_value})  # Update variable to be passed to template
+            if update_cookie:
+                session.update({field_name: field_value})  # Set or update cookie
+        #print('values:', values)
 
         server_groups = []
         client_ips = []
@@ -57,12 +59,13 @@ def _top():
             server_groups = locations[location].get('server_groups', DEFAULTS['server_groups'])
             if server_group := values.get('server_group'):
                 client_ips = get_client_ips(location, server_group)
-                print("Got client", len(client_ips), "IPs for", location, server_group)
+                #print("Got client", len(client_ips), "IPs for", location, server_group)
             _ = read_cache_file('status_codes')
             status_codes = _.get(location, [])
         return render_template(request.path, locations=locations, interval=values['interval'], location=location,
                                server_groups=server_groups, server_group=values['server_group'], client_ips=client_ips,
-                               status_codes=status_codes, intervals=intervals, status_code=values['status_code'])
+                               status_codes=status_codes, intervals=intervals, status_code=values['status_code'],
+                               end_time=values['end_time'])
     except Exception as e:
         return Response(format_exc(), 500, content_type=DEFAULTS['content_type'])
 

@@ -57,7 +57,7 @@ fieldset input {
   <fieldset>
     <legend>Server Group:</legend>
     <select name="server_group" id="server_group" size=1>
-      <option value="" selected>All Server Groups</option>
+      <option value=""{% if server_group == "" %} selected{% endif %}>All Server Groups</option>
       {% for v in server_groups %}
         <option value="{{v}}"{% if v == server_group %} selected{% endif %}>{{v}}</option>
       {% endfor %}
@@ -66,7 +66,7 @@ fieldset input {
   <fieldset>
     <legend>Client IP Address:</legend>
     <select name="client_ip" id="client_ip_list" size=1>
-      <option value="" selected>All Clients</option>
+      <option value=""{% if client_ip == "" %} selected{% endif %}>All Clients</option>
       {% for v in client_ips %}
         <option value="{{v}}">{{v}}</option>
       {% endfor %}
@@ -75,7 +75,7 @@ fieldset input {
   <fieldset>
     <legend>Response Code:</legend>
     <select name="status_code" id="status_code" size=1>
-      <option value="" selected>All Status Codes</option>
+      <option value=""{% if status_code == "" %} selected{% endif %}>All Status Codes</option>
       {% for v in status_codes %}
         <option value="{{v}}"{% if v == status_code %} selected{% endif %}>{{v}}</option>
       {% endfor %}
@@ -93,7 +93,7 @@ fieldset input {
       {% endfor %}
     </select>
   </fieldset>
-  <input type='hidden' name="end_time" id="end_time">
+  <input type='hidden' name="end_time" id="end_time" value="{{end_time}}">
   <input type="submit" value="Show Data">
   <input type="reset" value="Reset Options">
   </form>
@@ -107,7 +107,9 @@ fieldset input {
   // If certain drop-downs change, refresh query string & uptime time
   const selector_fields = ['location', 'server_group', 'interval', 'status_code'];
   selector_fields.forEach((selector_field) => {
+
     const selector = document.getElementById(selector_field);
+
     selector.onchange = (event) => {
 
       // Update search parameters if selected option has changed
@@ -121,7 +123,7 @@ fieldset input {
 
       // Get current date/time & set end_time to this value
       const now = Math.round(Date.now() / 1000);
-      document.getElementById('end_time').value = now;
+      url.searchParams.set('end_time', now.toString());
 
       // Reload the frame with the updated query string
       self.location.search = url.search;
